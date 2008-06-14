@@ -94,8 +94,10 @@ void MapWriter<KeyType, ValueType>::releaseMapStructures()
   template <typename KeyType, typename ValueType>
 void MapWriter<KeyType, ValueType>::shutdown()
 {
-  delete io;
-  delete cio;
+  if(getWrittenToDisk()) {
+     delete io;
+     delete cio;
+
   //AK : segfault clear
   //	outBufMap->clear();
   //readBufMap->clear();
@@ -119,6 +121,11 @@ void MapWriter<KeyType, ValueType>::shutdown()
   delete[] readNextInBatch;
   delete[] batchesCompleted;
   delete[] keysPerBatch;
+ }
+  else{
+     delete io;
+     delete cio;
+  }
 }
 
 //------------------------------------------------- GK
