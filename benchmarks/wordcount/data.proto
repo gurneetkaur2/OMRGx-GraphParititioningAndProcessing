@@ -1,0 +1,4 @@
+message RecordType {
+  required bytes key = 1;
+  repeated uint32 values = 2;
+}
