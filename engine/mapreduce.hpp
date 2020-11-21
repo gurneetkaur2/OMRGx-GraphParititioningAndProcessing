@@ -167,12 +167,12 @@ void* doInMemoryReduce(void* arg) {
 //=============================================
 // Member Functions
 //+++++++++++++++++++++++++++++++++++++++++++++
-  template <typename KeyType, typename ValueType>
+/*  template <typename KeyType, typename ValueType>
 void MapReduce<KeyType, ValueType>::setInput(const std::string input)
 {
   inputFolder = input;
 }
-
+*/
 /*
 //--------------------------------------------
 void MapReduce::parallelExecuteMappers(void *(*func)(void *), void* arg)
@@ -196,7 +196,7 @@ void MapReduce<KeyType, ValueType>::run()
 
   fprintf(stderr, "Init MR Writer in-Memory Buffers\n");
   double init_time = -getTimer();
-  writer.initBuf(nMappers, nReducers, batchSize, kBItems); // GK 
+  writer.initBuf(nMappers, nReducers, nVertices, batchSize, kBItems); // GK 
 
   map_times.resize(nMappers, 0.0);
   reduce_times.resize(nReducers, 0.0);
@@ -263,6 +263,7 @@ void MapReduce<KeyType, ValueType>::run()
   std::cout << std::endl;
 }
 
+/*
 //--------------------------------------------
   template <typename KeyType, typename ValueType>
 void MapReduce<KeyType, ValueType>::setMappers(const unsigned mappers)
@@ -296,18 +297,33 @@ void MapReduce<KeyType, ValueType>::setGB(const unsigned g)
 {
   gb = g;
 }
+*/
 
 template <typename KeyType, typename ValueType>
-void MapReduce<KeyType, ValueType>::init() {
+void MapReduce<KeyType, ValueType>::init(const std::string input, const unsigned g, const unsigned mappers, const unsigned reducers, const unsigned vertices, const unsigned bSize, const unsigned kItems) {
+  inputFolder = input;
+  nMappers = mappers;
+  nReducers = reducers;
+  nVertices = vertices;
+  batchSize = bSize;
+  kBItems = kItems;
+  gb = g;
+
   getListOfFiles(inputFolder, &fileList);
   reduceFiles(inputFolder, &fileList, gb);
   std::cout << "Number of files: " << fileList.size() << std::endl;
+
+  if(fileList.size() == 0) {
+    std::cout << "No work to be done" << std::endl;
+    exit(0);
+  }
+
   printFileNames(inputFolder, &fileList, gb);
   std::cout << "Dataset size: " << gb << " GB" << std::endl;
 
   //setThreads(std::min(static_cast<unsigned>(fileList.size()), nThreads));
-  setMappers(std::min(static_cast<unsigned>(fileList.size()), nMappers));
-  setReducers(std::min(nMappers, nReducers));
+  nMappers = std::min(static_cast<unsigned>(fileList.size()), nMappers);
+  nReducers = std::min(nMappers, nReducers);
 
   std::cout << "nMappers: " << nMappers << std::endl;
   std::cout << "nReducers: " << nReducers << std::endl;

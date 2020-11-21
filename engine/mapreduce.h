@@ -36,13 +36,14 @@ class MapReduce
      
     // System provided default; overridable by user
     virtual void run();
-    void setInput(const std::string infile);
+/*    void setInput(const std::string infile);
     void setMappers(const unsigned mappers);
     void setReducers(const unsigned reducers);
     void setBatchSize(const unsigned batchSize);     //GK
     void setkItems(const unsigned kBItems);     //GK
     void setGB(const unsigned g);
-    void init();
+  */
+    void init(const std::string input, const unsigned g, const unsigned mappers, const unsigned reducers, const unsigned vertices, const unsigned bSize, const unsigned kItems);
     void writeBuf(const unsigned tid, const KeyType& key, const ValueType& value);  //GK
     //bool read(const unsigned tid, MapBuffer<KeyType, ValueType>& container, std::vector<int>& keysPerBatch, MapBuffer<KeyType, unsigned>& lookUpTable, std::queue<int>& fetchBatchIds);  //GK
     bool read(const unsigned tid);
@@ -50,6 +51,7 @@ class MapReduce
     void subtractReduceTimes(const unsigned tid, const double stime);
 
     // Variables. Ideally, make these private and provide getters/setters.
+    unsigned nVertices;
     unsigned nMappers;
     unsigned nReducers;
     unsigned batchSize;  //Number of items in a batch

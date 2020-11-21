@@ -52,7 +52,8 @@ template <typename KeyType, typename ValueType>
 class MapWriter
 {
   public:
-    void initBuf(unsigned nMappers, unsigned nReducers, unsigned bSize, unsigned kItems);
+    void initBuf(unsigned nMappers, unsigned nReducers, unsigned nVertices, unsigned bSize, unsigned kItems);
+    void writeInit();
     void writeBuf(const unsigned tid, const KeyType& key, const ValueType& value); //GK
     void flushMapResidues(const unsigned tid);
 
@@ -82,6 +83,7 @@ class MapWriter
   private:
     bool read(const unsigned tid, InMemoryContainer<KeyType, ValueType>& readBufMap, std::vector<unsigned>& keysPerBatch, LookUpTable<KeyType>& lookUpTable, std::set<unsigned>& fetchBatchIds, std::vector<unsigned long long>& readNextInBatch, std::vector<bool>& batchesCompleted);
     
+    unsigned nVtces;
     unsigned nRows;
     unsigned nCols;
     unsigned batchSize;  //GK
@@ -90,6 +92,8 @@ class MapWriter
     //IdType* cTotalKeys; //GK
     IdType* nItems; //GK
     InMemoryContainer<KeyType, ValueType>* outBufMap;  //GK
+    std::vector<unsigned>* prev;
+    std::vector<unsigned>* next;
 
     IdType* totalKeysInFile;
     std::vector<pthread_mutex_t> locks;

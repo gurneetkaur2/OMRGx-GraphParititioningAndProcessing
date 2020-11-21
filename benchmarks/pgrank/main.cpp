@@ -1,13 +1,10 @@
-#define MAX_WORD_SIZE 32
-#define MAX_REAL_WORD_SIZE 32
-
 #ifdef USE_ONE_PHASE_IO
 #include "recordtype.h"
 #else
 #include "data.pb.h"
 #endif
 
-#define USE_STRING_HASH
+#define USE_NUMERICAL_HASH
 
 #include "../../engine/mapreduce.hpp"
 #include <iostream>
@@ -27,7 +24,7 @@ pthread_mutex_t countTotal;
 //  - http://hadoop.apache.org/docs/current/hadoop-mapreduce-client/hadoop-mapreduce-client-core/MapReduceTutorial.html#Walk-through
 
 template <typename KeyType, typename ValueType>
-class WordCount : public MapReduce<KeyType, ValueType>
+class PageRank : public MapReduce<KeyType, ValueType>
 {
   static thread_local uint64_t countThreadWords;
 
@@ -35,40 +32,32 @@ class WordCount : public MapReduce<KeyType, ValueType>
     void* map(const unsigned tid, const unsigned fileId, const std::string& input)
     {
       std::stringstream inputStream(input);
-      std::string token;
+      unsigned to, token;
+      std::vector<unsigned> from;
 
-      while (inputStream >> token) {
-#ifdef USE_ONE_PHASE_IO
-        unsigned idx = 0;
-        while(idx < token.size()) {
-          std::string miniToken = token.substr(idx, MAX_REAL_WORD_SIZE);
-          this->writeBuf(tid, miniToken, 1);
-          idx += (MAX_REAL_WORD_SIZE);
-        } 
-#else
-        this->writeBuf(tid, token, 1);
-#endif
+      inputStream >> to;
+      while(inputStream >> token){
+        from.push_back(token);
+      }
+      for(unsigned i = 0; i < from.size(); ++i){
+//                fprintf(stderr,"\nVID: %d FROM: %zu size: %zu", to, from[i], from.size());
+          this->writeBuf(tid, to, from[i]);
       }
       
       return NULL;
     }
 
     void* reduce(const unsigned tid, const KeyType& key, const std::vector<ValueType>& values) {
-      countThreadWords += std::accumulate(values.begin(), values.end(), 0);
+      //countThreadWords += std::accumulate(values.begin(), values.end(), 0);
       return NULL;
     }
 
     void* afterReduce(const unsigned tid) {
       //fprintf(stderr, "countThreadWords = %llu\n", countThreadWords);
-      pthread_mutex_lock(&countTotal);
-      countTotalWords += countThreadWords;
-      pthread_mutex_unlock(&countTotal); 
       return NULL;
     }
 };
 
-template <typename KeyType, typename ValueType>
-thread_local uint64_t WordCount<KeyType, ValueType>::countThreadWords = 0;
 
 template <typename KeyType, typename ValueType>
 void* combine(const KeyType& key, std::vector<ValueType>& to, const std::vector<ValueType>& from) {
@@ -81,11 +70,11 @@ void* combine(const KeyType& key, std::vector<ValueType>& to, const std::vector<
 //-------------------------------------------------
 int main(int argc, char** argv)
 {
-  WordCount<std::string, unsigned> wc;
+  PageRank<unsigned, unsigned> pr;
 
   std::string select = "";
   while(true){
-    std::cout << "Please select `GOMR` for graph Processing using OMR or `OMR` for regular MR application" << std::endl;
+    std::cout << "Please select `GOMR` for graph Processing or `OMR` for regular MR application" << std::endl;
     std::cin >> select;
     if (select == "OMR" | select == "GOMR")
         break;
@@ -119,21 +108,11 @@ int main(int argc, char** argv)
   assert(batchSize > 0);
   pthread_mutex_init(&countTotal, NULL);
 
-//  wc.setInput(folderpath);
 
-  //wc.setThreads(numThreads);   //GK
-//  wc.setMappers(nmappers);
- // wc.setReducers(nreducers);
-  // Set in-memory map size for a batch; size 3 means 4 items per batch; should be double the k items to be fetched per batch to avoid reading same elements again from infinimem
- // wc.setBatchSize(batchSize);
-  //number of items to be fetched from infinimem per batch
- // wc.setkItems(kitems);
- // wc.setGB(gb); 
-
-  wc.init(folderpath, gb, nmappers, nreducers, nvertices, batchSize, kitems);
+  pr.init(folderpath, gb, nmappers, nreducers, nvertices, batchSize, kitems);
 
   double runTime = -getTimer();
-  wc.run(); 
+  pr.run(); 
   runTime += getTimer();
   
   std::cout << "Main::Run time : " << runTime << " (msec)" << std::endl;

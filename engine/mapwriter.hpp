@@ -19,11 +19,11 @@
 //------------------------------------------------- GK
 // Initialize in-memory Buffers
   template <typename KeyType, typename ValueType>
-void MapWriter<KeyType, ValueType>::initBuf(unsigned nMappers, unsigned nReducers, unsigned bSize, unsigned kItems)
+void MapWriter<KeyType, ValueType>::initBuf(unsigned nMappers, unsigned nReducers, unsigned nVertices, unsigned bSize, unsigned kItems)
 {
   //nBuffers = pow(buffers, 2); // number of buffers is square of number of threads
   //nBuffers = nMappers * nReducers;
-
+  nVtces = nVertices;
   nRows = nMappers;
   nCols = nReducers;
   writtenToDisk = false;
@@ -33,6 +33,8 @@ void MapWriter<KeyType, ValueType>::initBuf(unsigned nMappers, unsigned nReducer
   totalKeysInFile = new IdType[nCols];
   //nReadKeys = new IdType[nBuffers];
   nItems = new IdType[nRows * nCols];
+  prev = new std::vector<unsigned>[nCols];
+  next = new std::vector<unsigned>[nCols];
 
   outBufMap = new InMemoryContainer<KeyType, ValueType>[nRows * nCols];
   readBufMap = new InMemoryContainer<KeyType, ValueType>[nCols];
@@ -85,6 +87,12 @@ void MapWriter<KeyType, ValueType>::shutdown()
   //AK : segfault clear
   //	outBufMap->clear();
   readBufMap->clear();
+  for (unsigned i = 0; i < nCols; i++){
+     //  readBufMap[i].clear();
+       readNextInBatch[i].clear();
+       prev[i].clear();
+       next[i].clear();
+  }
 
   //	delete[] cTotalKeys;
   //	delete[] nItems;
@@ -95,8 +103,25 @@ void MapWriter<KeyType, ValueType>::shutdown()
   delete[] lookUpTable;
   delete[] fetchBatchIds;
   delete[] readNextInBatch;
+  delete[] prev;
+  delete[] next;
   delete[] batchesCompleted;
   delete[] keysPerBatch;
+}
+
+//------------------------------------------------- GK
+// Initialize the next and prev arrays which will contain the values from next and prev iteration
+//
+template <typename KeyType, typename ValueType>
+void MapWriter<KeyType, ValueType>::writeInit() {
+    fprintf(stderr,"\n TID nParts %d ", nCols);
+  for (unsigned i = 0; i<nCols; ++i) {
+    for (unsigned j = 0; j<=nVtces; ++j) {
+         prev[i].push_back(-1); 
+         next[i].push_back(-1); 
+        }
+     } 
+
 }
 
 //------------------------------------------------- GK
@@ -108,16 +133,31 @@ void MapWriter<KeyType, ValueType>::writeBuf(const unsigned tid, const KeyType& 
   //unsigned bufferId = (tolower(word[0]) - 'a') % nCols; // values 0, 1, 2 at most = numThreads
   unsigned bufferId = hashKey(key) % nCols; // values 0, 1, 2 at most = numThreads
   unsigned buffer = tid * nCols + bufferId;  // calculate the actual buffer to write in
-  //	std::cout << "Inside WriteBuf nItems =  " << nItems << "\t" << buffer << "\n";  //GK
 
-  //    startKey = nItems;
+/*  if (nVtces > 0 ){
+     unsigned part = tid % nCols;
+    // unsigned vid = static_cast<unsigned>(key);    // key should be vertex number for graphs
+     unsigned vid = key;
+        fprintf(stderr, "\n1 --previous value of %d is %d \n", vid, (1/nVtces));
+     if(prev[part].at(vid) == -1){
+     	prev[part].at(vid) = 1 / nVtces;
+        fprintf(stderr, "\nprevious value of %d is %d \n", vid, (1/nVtces));
+  	}
+  }
+*/
+
+/* // I may not need the below code because in mapreduce value would not necessary be a useful vertex
+   // TODO: I can add this check for graph processing only where I can also add the PRank for the from vertex
+
+  unsigned whereVal = hashKey(value) % nCols; 
+    if(prev[part].at(value) == -1){
+      prev[part].at(value) = whereVal;
+  }
+*/
   //	fprintf(stderr, "\nWB- start outbufmap size : %d\t buffer: %llu\t nItems: %u", outBufMap[buffer].size(),buffer, nItems[buffer]);
-
-  if (outBufMap[buffer].size() >= batchSize)   // TODO: Keval: This logic won't hold if vector size is greater than 1
+  
+  if (outBufMap[buffer].size() >= batchSize)   
   {
-    // spill to disk using infinimem
-    //std::cout << "Inside WriteBuf: Capacity full now sort \n";  //GK
-    //		fprintf(stderr, "\nWB- check 1 outBufMap size: %d\t buffer: %llu", outBufMap[buffer].size(), buffer);
     //fprintf(stderr, "thread %u flushing off buffer %llu to file %llu\n", tid, buffer, bufferId);
     
     infinimem_write_times[tid] -= getTimer();
@@ -138,6 +178,7 @@ void MapWriter<KeyType, ValueType>::writeBuf(const unsigned tid, const KeyType& 
   writeBuf_times[tid] += timeWBF;
 }
 
+//-------------------------------------------
 template <typename KeyType, typename ValueType>
 void MapWriter<KeyType, ValueType>::flushMapResidues(const unsigned tid) {
   if(tid >= nCols) 
@@ -147,7 +188,6 @@ void MapWriter<KeyType, ValueType>::flushMapResidues(const unsigned tid) {
   double frTime = -getTimer();
   assert(writtenToDisk);
 
-  // KEVAL: THIS IS A CRAZY ELSE CONDITION
   if(nRows == 1) {
     // write out entire single buffer
     infinimem_write_times[tid] -= getTimer();
