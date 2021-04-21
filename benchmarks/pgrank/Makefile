@@ -16,7 +16,7 @@ RM          := rm -rf
 OBJS        := data.pb.o $(LIBPATH)/util.o main.o
 #OBJS_ONE    := $(LIBPATH)/util.o main-one.o
 
-OPTS        := #from command line (eg: OPTS+=...)
+OPTS        := -DUSE_GOMR #from command line (eg: OPTS+=...)
 
 -include    $(OBJS:%.o=%.d)
 

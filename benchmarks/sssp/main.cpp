@@ -5,6 +5,7 @@
 #endif
 
 #define USE_NUMERICAL_HASH
+#define MAX_VERTEX_VALUE (ULLONG_MAX)
 
 #include "../../engine/mapreduce.hpp"
 #include <iostream>
@@ -14,39 +15,46 @@
 #include "pthread.h"
 #include <ctime>
 #include <cstdlib>
+#include <fstream>
 
 int nvertices;
 int nmappers;
-//static uint64_t countTotalWords = 0;
-//pthread_mutex_t countTotal;
-const long double DAMPING_FACTOR = 0.85; // Google's recommendation in original paper.
-const long double TOLERANCE = (1e-1);
 //-------------------------------------------------
 // WordCount walk-through: 
 // test- makes no 
 
 //  - http://hadoop.apache.org/docs/current/hadoop-mapreduce-client/hadoop-mapreduce-client-core/MapReduceTutorial.html#Walk-through
 __thread unsigned iteration = 0;
+unsigned SOURCE = 1;
 template <typename KeyType, typename ValueType>
-class PageRank : public MapReduce<KeyType, ValueType>
+class Sssp : public MapReduce<KeyType, ValueType>
 {
- // static thread_local uint64_t countThreadWords;
+  // static thread_local uint64_t countThreadWords;
   //static thread_local std::vector<unsigned> prev; // = (nvertices, -1);
   //static thread_local std::vector<unsigned> next; // = (nvertices, -1);
 
-  std::vector<double>* prev; // = (nvertices, -1);
-  std::vector<double>* next; // = (nvertices, -1);
+  std::vector<unsigned long>* dist; // = (nvertices, -1);// store distance values for the vertices
+  std::vector<unsigned long> gdist; // = (nvertices, -1);// store distance values for the vertices
+  std::vector<unsigned long> ewt; //(nvertices, 1);
   public:
 
   void* beforeMap(const unsigned tid) {
-    prev = new std::vector<double>[nmappers];
-    next = new std::vector<double>[nmappers];
+    dist = new std::vector<unsigned long>[nmappers];
+  //  ewt = new std::vector<unsigned long>[nmappers];
     fprintf(stderr, "TID: %d, nvert:  %d \n", tid, nvertices);
     for (unsigned i = 0; i<=nvertices; ++i) {
-        prev[tid].push_back(1.0/nvertices);
-        next[tid].push_back(1.0/nvertices);
-      fprintf(stderr, "\n TID: %d, BEFORE key: %d prev: %f next: %f rank: %.2f \n", tid, i, prev[tid][i], next[tid][i], (1/nvertices));
+      dist[tid].push_back(MAX_VERTEX_VALUE);
+      if(tid == 0){
+        gdist.push_back(MAX_VERTEX_VALUE);
+        ewt.push_back(1);
+      }
+    //  fprintf(stderr, "\n TID: %d, BEFORE key: %d dist: %f ewt: %f rank: %.2f \n", tid, i, dist[tid][i], ewt[tid][i], (1/nvertices));
     }
+     //fprintf(stderr, "TID: %d, Before Mapping values \n", tid);
+    gdist.at(0) = 0;
+    gdist.at(1) = 0;
+    dist[0][0] = 0;
+    dist[0][1] = 0;
     return NULL;
   }
   void* map(const unsigned tid, const unsigned fileId, const std::string& input)
@@ -59,8 +67,6 @@ class PageRank : public MapReduce<KeyType, ValueType>
     while(inputStream >> token){
       from.push_back(token);
     }
-
-    prev[tid].at(to) = 1.0/from.size();
     for(unsigned i = 0; i < from.size(); ++i){
       //                fprintf(stderr,"\nVID: %d FROM: %zu size: %zu", to, from[i], from.size());
       this->writeBuf(tid, to, from[i]);
@@ -70,73 +76,70 @@ class PageRank : public MapReduce<KeyType, ValueType>
   }
 
   void* beforeReduce(const unsigned tid) {
-      //  unsigned int iters = 0;
+    //  unsigned int iters = 0;
   }
-
+  
   void* reduce(const unsigned tid, const KeyType& key, const std::vector<ValueType>& values) {
     //countThreadWords += std::accumulate(values.begin(), values.end(), 0);
-    long double sum = 0.0;
-       // iterate each vertex neighbor in adjlist
-   // fprintf(stderr, "TID: %d, Reducing values \n", tid);
+    //long double sum = 0.0;
+    // iterate each vertex neighbor in adjlist
+    // fprintf(stderr, "TID: %d, Reducing values \n", tid);
     for(auto it = values.begin(); it != values.end(); ++it) { 
-        float val = prev[tid].at(*it);
-        sum += val;
-    }
-     long double old = prev[tid].at(key);
-     //next[tid].at(key) = (1-DAMPING_FACTOR) + (DAMPING_FACTOR*sum);
-     float pagerank = DAMPING_FACTOR + (1 - DAMPING_FACTOR) * sum;
-
-    for(auto it = values.begin(); it != values.end(); ++it) { 
-         // check if the fetched neighbor has its adjlist
-        //need adjlist size for each neighbor 
-        // need to know number of neighbors for each value???? 
+      // check if the fetched neighbor has its adjlist
+      //need adjlist size for each neighbor 
+      // need to know number of neighbors for each value???? 
       //  fprintf(stderr, "TID: %d checking values it: %d \n", tid, *it);
-       // fprintf(stderr, "TID: %d, Prev: %f Neighbor %d \n", tid, prev[tid].at(*it), nNbrs.at(*it));
-      if(nNbrs.at(*it) > 0) { 
-        next[tid].at(*it) = ( pagerank / nNbrs.at(*it));
+      // fprintf(stderr, "TID: %d, Prev: %f Neighbor %d \n", tid, prev[tid].at(*it), nNbrs.at(*it));
+      int oldDistV = gdist.at(key);
+      int oldDistN = gdist.at(*it);
+      if(oldDistN != MAX_VERTEX_VALUE){
+        if(oldDistV > oldDistN + ewt[*it]) { // '1' is assuming single edge weight for all edges
+           dist[tid].at(key) = oldDistN + ewt[*it];  //TODO: should the distance for *it be updated instead? 
+          this->notDone(tid);
+          fprintf(stderr,"\nTID: %d getDone: %d ", tid, this->getDone(tid));
+        }
       }
-      else
-        fprintf(stderr, "TID: %d, Neighbors of %d not found \n", tid, *it);
+    /*  else{
+          dist[tid].at(*it) = oldDistN + ewt[*it];  //TODO: should the distance for *it be updated instead? 
+      }*/
     }
-    fprintf(stderr, "\n TID: %d, AFTER Key: %d prev: %f next: %f \n", tid, key, prev[tid].at(key), next[tid].at(key));
-   // fprintf(stderr, "TID: %d, DONE Reducing key prev: %d, next: %d \n", tid, prev[tid].at(key), next[tid].at(key));
+// fprintf(stderr, "TID: %d, DONE Reducing key prev: %d, next: %d \n", tid, prev[tid].at(key), next[tid].at(key));
+fprintf(stderr, "\n TID: %d, AFTER Key: %d dist: %u ewt: %u \n", tid, key, dist[tid].at(key), ewt.at(key));
 
-    next[tid].at(key) = pagerank;
+return NULL;
+}
 
-    if(iteration > this->getIterations()){
-      done.at(key) = 1;
-//      break;
-    }
-     if( fabs(old - next[tid].at(key)) > TOLERANCE ){
-      //  fprintf(stderr, "TID: %d, Still not done: %d  \n", tid, this->getDone(tid));
-                        // flag to iterate records again--  
-                        this->notDone(key);
-                        done.at(key) = 0; 
-     }
-    return NULL;
+void* updateReduceIter(const unsigned tid) {
+  ++iteration;
+  //fprintf(stderr, "AfterReduce\n");
+  // assign next to prev for the next iteration , copy to prev of all threads
+  //  iters = iters + 1;
+  // prev[tid].assign(next[tid].begin(), next[tid].end());
+    for (auto i = 0; i < dist[tid].size(); i++){
+      if(dist[tid][i] != MAX_VERTEX_VALUE && dist[tid][i] < gdist[i])
+        gdist[i] = dist[tid][i];
+  //  fprintf(stderr, "\n TID: %d, prev: %f next: %f \n", tid, prev[tid][i], next[tid][i]);
+   }
+  std::ofstream vfile;
+  char fname[20];
+  sprintf(fname, "kverifier"+tid);
+  vfile.open (fname);
+  for(IdType i=0; i<=nvertices; ++i) {
+      vfile << "Node: " << i << " Distance: " << dist[tid].at(i) << std::endl;
   }
+   vfile.close();
 
-  void* updateReduceIter(const unsigned tid) {
-
-    ++iteration;
-    //fprintf(stderr, "AfterReduce\n");
-     // assign next to prev for the next iteration , copy to prev of all threads
-   //  iters = iters + 1;
-     prev[tid].assign(next[tid].begin(), next[tid].end());
-  //  for (auto i = 0; i < prev[tid].size(); i++){
-    //  fprintf(stderr, "\n TID: %d, prev: %f next: %f \n", tid, prev[tid][i], next[tid][i]);
-   // }
-    fprintf(stderr,"\nTID: %d, iteration: %d ----", tid, iteration);
-//fprintf(stderr, "pagerank: thread %u iteration %d took %.3lf ms to process %llu vertices and %llu edges\n", tid, iteration, timevalToDouble(e) - timevalToDouble(s), nvertices, nedges);
-//}
-
-   return NULL;
+  fprintf(stderr,"\nTID: %d, iteration: %d ----", tid, iteration);
+  //fprintf(stderr, "pagerank: thread %u iteration %d took %.3lf ms to process %llu vertices and %llu edges\n", tid, iteration, timevalToDouble(e) - timevalToDouble(s), nvertices, nedges);
+  //}
+  return NULL;
   }
 
   void* afterReduce(const unsigned tid) {
 
-    return NULL;
+   return NULL;
   }
+  
 };
 
 
@@ -149,7 +152,7 @@ void* combine(const KeyType& key, std::vector<ValueType>& to, const std::vector<
 //-------------------------------------------------
 int main(int argc, char** argv)
 {
-  PageRank<unsigned, unsigned> pr;
+  Sssp<unsigned, unsigned> pr;
 
   //  std::string select = "";
   /*  while(true){

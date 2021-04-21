@@ -59,8 +59,6 @@ class PageRank : public MapReduce<KeyType, ValueType>
     while(inputStream >> token){
       from.push_back(token);
     }
-
-    prev[tid].at(to) = 1.0/from.size();
     for(unsigned i = 0; i < from.size(); ++i){
       //                fprintf(stderr,"\nVID: %d FROM: %zu size: %zu", to, from[i], from.size());
       this->writeBuf(tid, to, from[i]);
@@ -79,30 +77,23 @@ class PageRank : public MapReduce<KeyType, ValueType>
        // iterate each vertex neighbor in adjlist
    // fprintf(stderr, "TID: %d, Reducing values \n", tid);
     for(auto it = values.begin(); it != values.end(); ++it) { 
-        float val = prev[tid].at(*it);
-        sum += val;
-    }
-     long double old = prev[tid].at(key);
-     //next[tid].at(key) = (1-DAMPING_FACTOR) + (DAMPING_FACTOR*sum);
-     float pagerank = DAMPING_FACTOR + (1 - DAMPING_FACTOR) * sum;
-
-    for(auto it = values.begin(); it != values.end(); ++it) { 
          // check if the fetched neighbor has its adjlist
         //need adjlist size for each neighbor 
         // need to know number of neighbors for each value???? 
       //  fprintf(stderr, "TID: %d checking values it: %d \n", tid, *it);
        // fprintf(stderr, "TID: %d, Prev: %f Neighbor %d \n", tid, prev[tid].at(*it), nNbrs.at(*it));
       if(nNbrs.at(*it) > 0) { 
-        next[tid].at(*it) = ( pagerank / nNbrs.at(*it));
+        sum += ( prev[tid].at(*it) / nNbrs.at(*it));
       }
       else
         fprintf(stderr, "TID: %d, Neighbors of %d not found \n", tid, *it);
     }
-    fprintf(stderr, "\n TID: %d, AFTER Key: %d prev: %f next: %f \n", tid, key, prev[tid].at(key), next[tid].at(key));
    // fprintf(stderr, "TID: %d, DONE Reducing key prev: %d, next: %d \n", tid, prev[tid].at(key), next[tid].at(key));
-
-    next[tid].at(key) = pagerank;
-
+     long double old = prev[tid].at(key);
+     //next[tid].at(key) = (1-DAMPING_FACTOR) + (DAMPING_FACTOR*sum);
+     next[tid].at(key) = DAMPING_FACTOR + (1 - DAMPING_FACTOR) * sum;
+    fprintf(stderr, "\n TID: %d, AFTER Key: %d prev: %f next: %f \n", tid, key, prev[tid].at(key), next[tid].at(key));
+ 
     if(iteration > this->getIterations()){
       done.at(key) = 1;
 //      break;
@@ -116,8 +107,7 @@ class PageRank : public MapReduce<KeyType, ValueType>
     return NULL;
   }
 
-  void* updateReduceIter(const unsigned tid) {
-
+  void* afterReduce(const unsigned tid) {
     ++iteration;
     //fprintf(stderr, "AfterReduce\n");
      // assign next to prev for the next iteration , copy to prev of all threads
@@ -129,12 +119,6 @@ class PageRank : public MapReduce<KeyType, ValueType>
     fprintf(stderr,"\nTID: %d, iteration: %d ----", tid, iteration);
 //fprintf(stderr, "pagerank: thread %u iteration %d took %.3lf ms to process %llu vertices and %llu edges\n", tid, iteration, timevalToDouble(e) - timevalToDouble(s), nvertices, nedges);
 //}
-
-   return NULL;
-  }
-
-  void* afterReduce(const unsigned tid) {
-
     return NULL;
   }
 };
