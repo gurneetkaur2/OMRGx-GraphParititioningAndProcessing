@@ -42,10 +42,17 @@ Thumbs.db
 *.war
 *data.pb.o
 *.bin
-*.main.o
+*main.o
 *.d
-benchmarks/pgrank/data.pb.o
+*.pb.h
+benchmarks/*/data.pb.o
 benchmarks/pgrank/input_1gb.list
+benchmarks/*/main.o
+benchmarks/pgrank/pagerank.bin
+benchmarks/*.o
+engine/*.o
+benchmarks/sssp/*rifier
+benchmarks/go/data/
 
 # Large media files
 *.mp4

@@ -98,7 +98,7 @@ int main(int argc, char** argv)
     return 0;
    }
    else if (select == "GOMR" && argc != 8) { 
-    std::cout << "Usage: " << argv[0] << " <folderpath> <gb> <nmappers> <nreducers> <nvertices> <batchsize> <kitems>" << std::endl;
+    std::cout << "Usage: " << argv[0] << " <folderpath> <gb> <nmappers> <nreducers> <batchsize> <kitems> <nvertices>" << std::endl;
          
     return 0;
   }
@@ -111,10 +111,10 @@ int main(int argc, char** argv)
   if (select == "OMR")
       nvertices = -1;
   else
-      nvertices = atoi(argv[5]);
+      nvertices = atoi(argv[7]);
 
-  int batchSize = atoi(argv[6]);
-  int kitems = atoi(argv[7]);
+  int batchSize = atoi(argv[5]);
+  int kitems = atoi(argv[6]);
   
   assert(batchSize > 0);
   pthread_mutex_init(&countTotal, NULL);
@@ -130,6 +130,7 @@ int main(int argc, char** argv)
  // wc.setkItems(kitems);
  // wc.setGB(gb); 
 
+  std::cout<<"\ngoing to init ";
   wc.init(folderpath, gb, nmappers, nreducers, nvertices, batchSize, kitems);
 
   double runTime = -getTimer();
