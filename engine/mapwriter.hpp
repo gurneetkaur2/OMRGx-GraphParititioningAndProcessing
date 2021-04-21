@@ -27,14 +27,15 @@ void MapWriter<KeyType, ValueType>::initBuf(unsigned nMappers, unsigned nReducer
   nRows = nMappers;
   nCols = nReducers;
   writtenToDisk = false;
+//  don = true;
   batchSize = bSize;
   kBItems = kItems;
   //cTotalKeys = new IdType[nBuffers];
   totalKeysInFile = new IdType[nCols];
   //nReadKeys = new IdType[nBuffers];
   nItems = new IdType[nRows * nCols];
-  prev = new std::vector<unsigned>[nCols];
-  next = new std::vector<unsigned>[nCols];
+//  prev = new std::vector<unsigned>[nCols];
+//  next = new std::vector<unsigned>[nCols];
 
   outBufMap = new InMemoryContainer<KeyType, ValueType>[nRows * nCols];
   readBufMap = new InMemoryContainer<KeyType, ValueType>[nCols];
@@ -90,8 +91,8 @@ void MapWriter<KeyType, ValueType>::shutdown()
   for (unsigned i = 0; i < nCols; i++){
      //  readBufMap[i].clear();
        readNextInBatch[i].clear();
-       prev[i].clear();
-       next[i].clear();
+  //     prev[i].clear();
+  //     next[i].clear();
   }
 
   //	delete[] cTotalKeys;
@@ -103,8 +104,8 @@ void MapWriter<KeyType, ValueType>::shutdown()
   delete[] lookUpTable;
   delete[] fetchBatchIds;
   delete[] readNextInBatch;
-  delete[] prev;
-  delete[] next;
+ // delete[] prev;
+ // delete[] next;
   delete[] batchesCompleted;
   delete[] keysPerBatch;
 }
@@ -114,13 +115,14 @@ void MapWriter<KeyType, ValueType>::shutdown()
 //
 template <typename KeyType, typename ValueType>
 void MapWriter<KeyType, ValueType>::writeInit() {
-    fprintf(stderr,"\n TID nParts %d ", nCols);
-  for (unsigned i = 0; i<nCols; ++i) {
+    fprintf(stderr,"\n TID nParts %d vertices %d ", nCols, nVtces);
+  //for (unsigned i = 0; i<nCols; ++i) {
     for (unsigned j = 0; j<=nVtces; ++j) {
-         prev[i].push_back(-1); 
-         next[i].push_back(-1); 
+         nNbrs.push_back(0); 
+         //done.push_back(0); 
+        // next[i].push_back(-1); 
         }
-     } 
+    // } 
 
 }
 
@@ -134,18 +136,19 @@ void MapWriter<KeyType, ValueType>::writeBuf(const unsigned tid, const KeyType& 
   unsigned bufferId = hashKey(key) % nCols; // values 0, 1, 2 at most = numThreads
   unsigned buffer = tid * nCols + bufferId;  // calculate the actual buffer to write in
 
-/*  if (nVtces > 0 ){
+/*#ifdef USE_GOMR
+  if (nVtces > 0 ){
      unsigned part = tid % nCols;
     // unsigned vid = static_cast<unsigned>(key);    // key should be vertex number for graphs
      unsigned vid = key;
-        fprintf(stderr, "\n1 --previous value of %d is %d \n", vid, (1/nVtces));
+    //    fprintf(stderr, "\n1 --previous value of %d is %d \n", vid, (1/nVtces));
      if(prev[part].at(vid) == -1){
      	prev[part].at(vid) = 1 / nVtces;
-        fprintf(stderr, "\nprevious value of %d is %d \n", vid, (1/nVtces));
+      //  fprintf(stderr, "\nprevious value of %d is %d \n", vid, (1/nVtces));
   	}
   }
+#endif
 */
-
 /* // I may not need the below code because in mapreduce value would not necessary be a useful vertex
    // TODO: I can add this check for graph processing only where I can also add the PRank for the from vertex
 
@@ -154,7 +157,7 @@ void MapWriter<KeyType, ValueType>::writeBuf(const unsigned tid, const KeyType& 
       prev[part].at(value) = whereVal;
   }
 */
-  //	fprintf(stderr, "\nWB- start outbufmap size : %d\t buffer: %llu\t nItems: %u", outBufMap[buffer].size(),buffer, nItems[buffer]);
+ // 	fprintf(stderr, "\nWB- start outbufmap size : %d\t buffer: %llu\t nItems: %u", outBufMap[buffer].size(),buffer, nItems[buffer]);
   
   if (outBufMap[buffer].size() >= batchSize)   
   {
@@ -355,12 +358,19 @@ void MapWriter<KeyType, ValueType>::performWrite(const unsigned tid, const unsig
   if(it != outBufMap[buffer].end())
   {
     combine(key, it->second, vals);
+    #ifdef USE_GOMR
+    // I do not need locks here because the threads will share the same key
+    nNbrs.at(key) += 1;
+    #endif
     ++localCombinedPairs[tid];
     //cTotalKeys[buffer] += value;
     //			         fprintf(stderr, "\nWord added in map: %s, Value after add: %d, buffer: %llu outBufMap size: %d", out.word().c_str(), value, buffer, outBufMap[buffer].size());
   }
   else {
     outBufMap[buffer].emplace(key, vals); 
+    #ifdef USE_GOMR
+    nNbrs.at(key) = 1;
+    #endif
     //cTotalKeys[buffer] += value;
     nItems[buffer]++;
     //		       fprintf(stderr, "\nWB - word added in map: %s\t buffer: %llu\t outBufMap size: %d", out.word().c_str(), buffer, outBufMap[buffer].size());
@@ -428,6 +438,19 @@ void MapWriter<KeyType, ValueType>::betterWriteToInfinimem(const unsigned buffer
   delete[] records;
 }
 
+//-------------------------------------------------
+// Initializes the readNextInBatch to start from for each batch
+  template <typename KeyType, typename ValueType>
+void MapWriter<KeyType, ValueType>::readClear(const unsigned tid)
+{
+  //for (unsigned i = 0; i < nCols; i++){
+       readBufMap[tid].clear();
+       readNextInBatch[tid].clear();
+    fetchBatchIds[tid].clear(); 
+    batchesCompleted[tid].clear();
+    keysPerBatch[tid].clear(); 
+ // }
+}
 
 //-------------------------------------------------
 // Initializes the readNextInBatch to start from for each batch

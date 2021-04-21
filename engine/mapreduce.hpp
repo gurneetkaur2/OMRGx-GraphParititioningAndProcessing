@@ -8,6 +8,7 @@
 #include <vector>
 #include <string>
 #include <ctime>
+#include <numeric>
 
 //--------------------------------------------
 // Helper NON-member Functions
@@ -39,7 +40,7 @@ void* doMap(void* arg)
   unsigned tid = static_cast<unsigned>(static_cast<std::pair<unsigned, void*>*>(arg)->first);
   MapReduce<KeyType, ValueType> *mr = static_cast<MapReduce<KeyType, ValueType> *>(static_cast<std::pair<unsigned, void*>*>(arg)->second);
   MapWriter<KeyType, ValueType>& writer = mr->writer;
-  //std::cout << "DoMap tid, *mr:" << tid << "\n";  //GK
+ // std::cout << "DoMap tid, *mr:" << tid << "\n";  //GK
 
   mr->beforeMap(tid);
 
@@ -87,15 +88,21 @@ void* doReduce(void* arg)
   MapWriter<KeyType, ValueType>& writer = mr->writer; 
 
   mr->beforeReduce(tid);
+  
+  mr->don = false;
+    fprintf(stderr,"\nMR BEFORE Outer While **********");
+  while(!mr->getDone(tid)){
+    fprintf(stderr,"\nTID: %d MR Outer While Don: %d **********", tid, mr->don);
+    mr->don = true;
+    mr->readInit(tid);
 
-  mr->readInit(tid);
-
-  while(true) {
-    bool execLoop = mr->read(tid);
-    if(execLoop == false) {
-      for(InMemoryContainerConstIterator<KeyType, ValueType> it = writer.readBufMap[tid].begin(); it != writer.readBufMap[tid].end(); ++it)
-        mr->reduce(tid, it->first, it->second);
-      break;
+    while(true) {
+      bool execLoop = mr->read(tid);
+    fprintf(stderr,"\nMR TID: %d Inner While Don: %d, ExecL: %d **********", tid, mr->don, execLoop);
+      if(execLoop == false) {
+        for(InMemoryContainerConstIterator<KeyType, ValueType> it = writer.readBufMap[tid].begin(); it != writer.readBufMap[tid].end(); ++it)
+          mr->reduce(tid, it->first, it->second);
+        break;
     }
 
     unsigned counter = 0; 
@@ -105,6 +112,7 @@ void* doReduce(void* arg)
       if (counter >= mr->kBItems)
         break;
 
+   // fprintf(stderr, "TID: %d,reducing  \n", tid);
       mr->reduce(tid, it->first, it->second);
 
       const KeyType& key = it->first;
@@ -118,13 +126,16 @@ void* doReduce(void* arg)
       }
       //writer.lookUpTable[tid][key].clear();
       writer.lookUpTable[tid].erase(key);
-
       counter++;
     }
 
     writer.readBufMap[tid].erase(writer.readBufMap[tid].begin(), it);
-  }
+   }
 
+   //writer.readBufMap[tid].erase(writer.readBufMap[tid].begin(), writer.readBufMap[tid].end());
+   writer.readClear(tid);
+   mr->updateReduceIter(tid);
+  }
   mr->afterReduce(tid);
 
   time_reduce += getTimer();
@@ -145,15 +156,25 @@ void* doInMemoryReduce(void* arg) {
   MapWriter<KeyType, ValueType>& writer = mr->writer;
 
   mr->beforeReduce(tid);
+  mr->don = false;
+  fprintf(stderr,"\nInMem-MR BEFORE Outer While **********");
 
-  InMemoryReductionState<KeyType, ValueType> state = writer.initiateInMemoryReduce(tid); 
+  while(!mr->getDone(tid)){
+    fprintf(stderr,"\nInMem-MR Outer While Don: %d **********", mr->don);
+    mr->don = true;
 
-  InMemoryContainer<KeyType, ValueType> record;
-  while(writer.getNextMinKey(&state, &record)) {
-    mr->reduce(tid, record.begin()->first, record.begin()->second);
-    record.clear();
+    InMemoryReductionState<KeyType, ValueType> state = writer.initiateInMemoryReduce(tid); 
+
+    InMemoryContainer<KeyType, ValueType> record;
+
+
+    while(writer.getNextMinKey(&state, &record)) {
+      mr->reduce(tid, record.begin()->first, record.begin()->second);
+      record.clear();
+    }
+
+   mr->updateReduceIter(tid);
   }
-
   mr->afterReduce(tid);
 
   time_reduce += getTimer();
@@ -167,27 +188,6 @@ void* doInMemoryReduce(void* arg) {
 //=============================================
 // Member Functions
 //+++++++++++++++++++++++++++++++++++++++++++++
-/*  template <typename KeyType, typename ValueType>
-void MapReduce<KeyType, ValueType>::setInput(const std::string input)
-{
-  inputFolder = input;
-}
-*/
-/*
-//--------------------------------------------
-void MapReduce::parallelExecuteMappers(void *(*func)(void *), void* arg)
-{
-parallelExecute(func, arg, nMappers);
-}
-
-//--------------------------------------------
-void MapReduce::parallelExecuteReducers(void *(*func)(void *), void* arg)
-{
-//std::cout << "Inside ParallelExecuteReducers..\n";
-parallelExecute(func, arg, nReducers);
-}
- */
-
 //--------------------------------------------
   template <typename KeyType, typename ValueType>
 void MapReduce<KeyType, ValueType>::run()
@@ -207,10 +207,16 @@ void MapReduce<KeyType, ValueType>::run()
   localCombinedPairs.resize(nMappers, uint64_t(0));
 
   init_time += getTimer();
+  
+  fprintf(stderr, "Initializing ..\n");
+  #ifdef USE_GOMR 
+  writer.writeInit();
+  #endif
 
   fprintf(stderr, "Running Mappers\n");
   parallelExecute(doMap<KeyType, ValueType>, this, nMappers);
-
+  
+//  assert(false);
   if(!writer.getWrittenToDisk()) {
     fprintf(stderr, "Running InMemoryReducers\n");
     parallelExecute(doInMemoryReduce<KeyType, ValueType>, this, nReducers);
@@ -299,8 +305,14 @@ void MapReduce<KeyType, ValueType>::setGB(const unsigned g)
 }
 */
 
+/*template <typename KeyType, typename ValueType>
+void MapReduce<KeyType, ValueType>::notDone(const unsigned tid) {
+            writer.notDone(tid);
+ }
+*/
+//--------------------------------------------  GK
 template <typename KeyType, typename ValueType>
-void MapReduce<KeyType, ValueType>::init(const std::string input, const unsigned g, const unsigned mappers, const unsigned reducers, const unsigned vertices, const unsigned bSize, const unsigned kItems) {
+void MapReduce<KeyType, ValueType>::init(const std::string input, const unsigned g, const unsigned mappers, const unsigned reducers, const unsigned vertices, const unsigned bSize, const unsigned kItems, const unsigned iterations) {
   inputFolder = input;
   nMappers = mappers;
   nReducers = reducers;
@@ -308,7 +320,8 @@ void MapReduce<KeyType, ValueType>::init(const std::string input, const unsigned
   batchSize = bSize;
   kBItems = kItems;
   gb = g;
-
+  //unsigned int nIterations = UINT_MAX;
+  nIterations = iterations;
   getListOfFiles(inputFolder, &fileList);
   reduceFiles(inputFolder, &fileList, gb);
   std::cout << "Number of files: " << fileList.size() << std::endl;
@@ -324,7 +337,7 @@ void MapReduce<KeyType, ValueType>::init(const std::string input, const unsigned
   //setThreads(std::min(static_cast<unsigned>(fileList.size()), nThreads));
   nMappers = std::min(static_cast<unsigned>(fileList.size()), nMappers);
   nReducers = std::min(nMappers, nReducers);
-
+  //template <typename KeyType, typename ValueType>
   std::cout << "nMappers: " << nMappers << std::endl;
   std::cout << "nReducers: " << nReducers << std::endl;
   std::cout << "batchSize: " << batchSize << std::endl;

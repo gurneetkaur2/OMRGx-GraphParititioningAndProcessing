@@ -29,6 +29,10 @@ using InMemoryContainerConstIterator = typename InMemoryContainer<KeyType, Value
 
 template <typename KeyType>
 using LookUpTable = std::map<KeyType, std::vector<unsigned> >;
+#ifdef USE_GOMR
+std::vector<unsigned long long> nNbrs;
+//std::vector<bool> done;
+#endif
 
 std::vector<double> writeBuf_times;
 std::vector<double> flushResidues_times;
@@ -64,10 +68,17 @@ class MapWriter
     void writeToInfinimem(const unsigned buffer, const IdType startKey, unsigned nItems, const InMemoryContainer<KeyType, ValueType>& inMemMap); //GK
     bool read(const unsigned tid);
     void readInit(const unsigned tid);
+    void readClear(const unsigned tid);
     void releaseMapStructures();
     void shutdown();
 
+    //bool don;
     bool getWrittenToDisk() { return writtenToDisk; }
+   // bool getDone(const unsigned tid) { return don; }
+    //static inline void done() { don = true; }
+    //void notDone(const unsigned tid) {
+      //     don = false;
+    // }
 
     InMemoryReductionState<KeyType, ValueType> initiateInMemoryReduce(unsigned tid);
     bool getNextMinKey(InMemoryReductionState<KeyType, ValueType>* state, InMemoryContainer<KeyType, ValueType>* record);
@@ -92,8 +103,8 @@ class MapWriter
     //IdType* cTotalKeys; //GK
     IdType* nItems; //GK
     InMemoryContainer<KeyType, ValueType>* outBufMap;  //GK
-    std::vector<unsigned>* prev;
-    std::vector<unsigned>* next;
+//    std::vector<unsigned>* prev;
+//    std::vector<unsigned>* next;
 
     IdType* totalKeysInFile;
     std::vector<pthread_mutex_t> locks;
