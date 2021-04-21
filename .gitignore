@@ -6,6 +6,7 @@
 # Node artifact files
 node_modules/
 dist/
+*Makefile
 
 # Compiled Java class files
 *.class
@@ -39,6 +40,12 @@ Thumbs.db
 *.app
 *.exe
 *.war
+*data.pb.o
+*.bin
+*.main.o
+*.d
+benchmarks/pgrank/data.pb.o
+benchmarks/pgrank/input_1gb.list
 
 # Large media files
 *.mp4
@@ -47,4 +54,7 @@ Thumbs.db
 *.flv
 *.mov
 *.wmv
+*list
 
+# output file
+*out*
