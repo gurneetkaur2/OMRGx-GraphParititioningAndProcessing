@@ -31,6 +31,7 @@ template <typename KeyType>
 using LookUpTable = std::map<KeyType, std::vector<unsigned> >;
 #ifdef USE_GOMR
 std::vector<unsigned long long> nNbrs;
+typedef std::map<unsigned, unsigned > InMemTable;
 //std::vector<bool> done;
 #endif
 

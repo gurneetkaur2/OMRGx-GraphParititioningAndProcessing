@@ -34,7 +34,11 @@ class MapReduce
     virtual void* map(const unsigned tid, const unsigned fileId, const std::string& input) = 0;
     virtual void* afterMap(const unsigned tid) { };
     virtual void* beforeReduce(const unsigned tid) { };
+ #ifdef USE_GOMR  
+    virtual void* reduce(const unsigned tid, const InMemoryContainer<KeyType, ValueType>& container) = 0;
+ #else
     virtual void* reduce(const unsigned tid, const KeyType& key, const std::vector<ValueType>& values) = 0; 
+ #endif
     virtual void* updateReduceIter(const unsigned tid) { };
     virtual void* afterReduce(const unsigned tid) { };
      

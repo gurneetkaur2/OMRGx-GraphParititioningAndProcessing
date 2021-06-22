@@ -100,21 +100,35 @@ void* doReduce(void* arg)
       bool execLoop = mr->read(tid);
     fprintf(stderr,"\nMR TID: %d Inner While Don: %d, ExecL: %d **********", tid, mr->don, execLoop);
       if(execLoop == false) {
+#ifdef USE_GOMR
+        mr->reduce(tid, writer.readBufMap[tid]);
+#else
         for(InMemoryContainerConstIterator<KeyType, ValueType> it = writer.readBufMap[tid].begin(); it != writer.readBufMap[tid].end(); ++it)
           mr->reduce(tid, it->first, it->second);
+#endif
         break;
     }
 
     unsigned counter = 0; 
+#ifdef USE_GOMR
+    InMemoryContainer<KeyType, ValueType> refineMap;
+#endif
     InMemoryContainerIterator<KeyType, ValueType> it;
     // send top-k (least) elements to reducer
     for (it = writer.readBufMap[tid].begin(); it != writer.readBufMap[tid].end(); ++it) {
-      if (counter >= mr->kBItems)
-        break;
-
+      if (counter >= mr->kBItems){
+#ifdef USE_GOMR
+          mr->reduce(tid, refineMap);
+          refineMap.clear();
+#endif
+          break;
+      }
    // fprintf(stderr, "TID: %d,reducing  \n", tid);
+#ifdef USE_GOMR
+      refineMap[it->first] = it->second;
+#else
       mr->reduce(tid, it->first, it->second);
-
+#endif
       const KeyType& key = it->first;
       auto pos = writer.lookUpTable[tid].find(key);
       assert(pos != writer.lookUpTable[tid].end());
@@ -166,12 +180,21 @@ void* doInMemoryReduce(void* arg) {
     InMemoryReductionState<KeyType, ValueType> state = writer.initiateInMemoryReduce(tid); 
 
     InMemoryContainer<KeyType, ValueType> record;
-
+#ifdef USE_GOMR
+    InMemoryContainer<KeyType, ValueType> refineMap;
+#endif
 
     while(writer.getNextMinKey(&state, &record)) {
+#ifdef USE_GOMR
+      refineMap[record.begin()->first] = record.begin()->second;
+#else
       mr->reduce(tid, record.begin()->first, record.begin()->second);
+#endif
       record.clear();
     }
+#ifdef USE_GOMR
+   mr->reduce(tid, refineMap);
+#endif
 
    mr->updateReduceIter(tid);
   }
