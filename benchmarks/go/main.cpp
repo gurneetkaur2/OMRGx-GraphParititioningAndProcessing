@@ -59,10 +59,11 @@ class Go : public MapReduce<KeyType, ValueType>
   pthread_barrier_t barWriteInfo;
   pthread_barrier_t barAfterRefine;
   pthread_barrier_t barClear;
+  pthread_barrier_t barShutdown;
   public:
 
   void* beforeMap(const unsigned tid) {
-    where = new std::vector<unsigned>[nmappers]; // nReducers cause problem here
+    where = new std::vector<unsigned>[nReducers]; // nReducers cause problem here
     //next = new std::vector<double>[nmappers];
     fprintf(stderr, "TID: %d, nvert:  %d \n", tid, nvertices);
     for (unsigned i = 0; i<=nvertices; ++i) {
@@ -77,7 +78,8 @@ class Go : public MapReduce<KeyType, ValueType>
     // fprintf(stderr, "TID: %d, After assigning init values \n", tid);
     return NULL;
   }
-  void* map(const unsigned tid, const unsigned fileId, const std::string& input)
+  //void* map(const unsigned tid, const unsigned fileId, const std::string& input)
+  void* map(const unsigned tid, const std::string& input, const unsigned lineId)
   {
     //    fprintf(stderr, "TID: %d,Inside Map \n", tid);
     //pthread_barrier_wait(&(barClear));
@@ -85,7 +87,7 @@ class Go : public MapReduce<KeyType, ValueType>
     unsigned to, token;
     std::vector<unsigned> from;
 
-    inputStream >> to;
+    //inputStream >> to;
     while(inputStream >> token){
       from.push_back(token);
     }
@@ -97,12 +99,13 @@ class Go : public MapReduce<KeyType, ValueType>
       where[part].at(to) = bufferId;
 
     for(unsigned i = 0; i < from.size(); ++i){
-      //                fprintf(stderr,"\nVID: %d FROM: %zu size: %zu", to, from[i], from.size());
+   //                  fprintf(stderr,"\nVID: %d FROM: %zu size: %zu", lineId, from[i], from.size());
       unsigned whereFrom = hashKey(from[i]) % nReducers;
       if(where[part].at(from[i]) == INIT_VAL)
         where[part].at(from[i]) = whereFrom; // partition ID of where 'from' will go
 
-      this->writeBuf(tid, to, from[i]);
+      //this->writeBuf(tid, to, from[i]);
+      this->writeBuf(tid, lineId, from[i]);
     }
 
     return NULL;
@@ -111,17 +114,18 @@ class Go : public MapReduce<KeyType, ValueType>
   void* beforeReduce(const unsigned tid) {
     //  unsigned int iters = 0;
     //copy local partition ids to gWhere
-    fprintf(stderr, "TID: %d,BEFORE Reducing values \n", tid);
+    fprintf(stderr, "\nTID: %d,BEFORE Reducing values \n", tid);
     if(tid ==0){
       this->gCopy(tid, gWhere);
     }
     //initialize barriers
-    pthread_barrier_init(&barRefine, NULL, nReducers);
-    pthread_barrier_init(&barCompute, NULL, nReducers);
-    pthread_barrier_init(&barEdgeCuts, NULL, nReducers);
-    pthread_barrier_init(&barWriteInfo, NULL, nReducers);
-    pthread_barrier_init(&barClear, NULL, nReducers);
-    pthread_barrier_init(&barAfterRefine, NULL, nReducers);
+    pthread_barrier_init(&barRefine, 0, nReducers);
+    pthread_barrier_init(&barCompute, 0, nReducers);
+    pthread_barrier_init(&barEdgeCuts, 0, nReducers);
+    pthread_barrier_init(&barWriteInfo, 0, nReducers);
+    pthread_barrier_init(&barClear, 0, nReducers);
+    pthread_barrier_init(&barShutdown, 0, nReducers);
+    pthread_barrier_init(&barAfterRefine, 0, nReducers);
 
     //initialize the locks to be used for synchronization
     for(unsigned i=0; i<nReducers; ++i) {
@@ -140,32 +144,54 @@ class Go : public MapReduce<KeyType, ValueType>
     markMin = new std::vector<unsigned>[nReducers];
     //  std::map<unsigned, unsigned> maxPair = new std::map<unsigned, unsigned>[this->nReducers];
     totalPECuts = new unsigned long long[nReducers];
-
-    for (unsigned i = 0; i < nReducers; i++) {
-      //fetchPIDs[tid].insert(i);
-      pIdsCompleted[tid].push_back(false);
-    }
-    bndIndMap[tid].clear();
-    dTable[tid].clear();
-    totalPECuts[tid] = 0;
-    // bndSet = false;
-    totalCuts = 0;
-
+    // fetchPIds = new std::set<unsigned>[nReducers];
+     
+    refineInit(tid);
   }
 
+//--------------------------------------------------
+void refineInit(const unsigned tid) {
+
+    for (unsigned i = 0; i < nReducers; i++) {
+          fetchPIds[tid].insert(i);  //partition ids - 0,1,2 .. 
+          pIdsCompleted[tid].push_back(false);
+     }
+  //   bndIndMap[tid].clear();
+   //  dTable[tid].clear();
+  //   readNext[tid] = 0;
+   clearMemorystructures(tid);
+     totalPECuts[tid] = 0;
+     //bndSet = false;
+     totalCuts = 0; 
+}
+
+//--------------------------------------------------
   void* reduce(const unsigned tid, const InMemoryContainer<KeyType, ValueType>& container){
     //countThreadWords += std::accumulate(values.begin(), values.end(), 0);
     long double sum = 0.0;
     // iterate each vertex neighbor in adjlist
     fprintf(stderr, "\nTID: %d, Reducing values ", tid);
     unsigned hipart = tid;
-    // unsigned whereMax; 
-    for(auto wherei=0; wherei < nReducers; wherei++){ //start TID loop
-      unsigned whereMax = wherei; 
+    // unsigned whereMax;
+    for(auto it = fetchPIds[tid].begin(); it != fetchPIds[tid].end(); ++it) { 
+    //for(auto wherei=0; wherei < nReducers; wherei++){ //start TID loop
+      unsigned whereMax = *it; 
+      fprintf(stderr, "\nTID: %d, WHEREMAX: %d ", tid, whereMax);
       if(whereMax == tid){
-        pIdsCompleted[tid][wherei] = true;
+      fprintf(stderr, "\nTID: %d pIdsCompleted[%d][%d]: %d ", tid, hipart, whereMax, pIdsCompleted[hipart][whereMax]);
+        //pIdsCompleted[tid][*it] = true;
+      fprintf(stderr, "\nTID: %d going to NEXT Iter", tid);
         continue;
       }
+      else if (hipart < nReducers && whereMax >= nReducers){
+          pIdsCompleted[tid][*it] = true;
+          continue;
+      }
+      else if ( hipart >= nReducers && whereMax < nReducers) {
+          pIdsCompleted[tid][*it] = true;
+          continue;
+      }
+      fprintf(stderr, "\nFINAL TID: %d, WHEREMAX: %d ", tid, whereMax);
       bool ret = this->checkPIDStarted(tid, hipart, whereMax);
       fprintf(stderr, "\nTID: %d, refining with: %d, ret: %d ", tid, whereMax, ret);
       ComputeBECut(tid, gWhere, bndIndMap[tid], container);
@@ -177,13 +203,14 @@ class Go : public MapReduce<KeyType, ValueType>
         int maxG = -1;     
         do{
           maxG = computeGain(tid, hipart, whereMax, markMax[hipart], markMin[hipart], container);
+      fprintf(stderr, "\nTID: %d, MaxG > 0: %d", tid, maxG);
         } while(maxG > 0);  //end do
       } // end if ret
 
-      pthread_barrier_wait(&(barCompute)); 
+//      pthread_barrier_wait(&(barCompute)); 
       if(ret == true) {
         //writePartInfo
-        fprintf(stderr,"\nTID %d going to write part markMax size: %d ", tid, markMax[hipart].size());
+//        fprintf(stderr,"\nTID %d going to write part markMax size: %d ", tid, markMax[hipart].size());
         for(unsigned it=0; it<markMax[hipart].size(); it++){
           unsigned vtx1 = markMax[hipart].at(it);     //it->first;
           unsigned vtx2 = markMin[hipart].at(it);
@@ -197,18 +224,19 @@ class Go : public MapReduce<KeyType, ValueType>
           //changewhere
           where[hipart].at(vtx1) = gWhere[vtx1];
           where[hipart].at(vtx2) = gWhere[vtx2];  
-          pthread_mutex_lock(&locks[tid]);
+      //    pthread_mutex_lock(&locks[tid]);
           where[whereMax].at(vtx1) = gWhere[vtx1];
           where[whereMax].at(vtx2) = gWhere[vtx2];
-          pthread_mutex_unlock(&locks[tid]);
+        //  pthread_mutex_unlock(&locks[tid]);
         }
       }
+      fprintf(stderr, "\nTID: %d, Before BarWriteInfo ", tid);
       pthread_barrier_wait(&(barWriteInfo));
-      this->clearMemorystructures(tid);
+      fprintf(stderr, "\nTID: %d BEFORE pIdsCompleted[%d][%d]: %d ", tid, hipart, whereMax, pIdsCompleted[hipart][whereMax]);
       pIdsCompleted[hipart][whereMax] = true;
+      fprintf(stderr, "\nTID: %d, AFTER pIdsCompleted: %d ", tid, pIdsCompleted[hipart][whereMax]);
 
     }  // end of tid loop
-
     return NULL;
   }
 
@@ -216,14 +244,21 @@ class Go : public MapReduce<KeyType, ValueType>
 
   void* updateReduceIter(const unsigned tid) {
 
+      pthread_barrier_wait(&(barCompute));
+      refineInit(tid);
+      //this->clearMemorystructures(tid);
+      fprintf(stderr, "\nTID: %d, Clearning Mem Structs----- ", tid);
     ++iteration;
-    fprintf(stderr,"\nTID: %d, iteration: %d ----", tid, iteration);
-    //clear memory structures
-    bndIndMap[tid].clear();
-    markMax[tid].clear();
-    markMin[tid].clear();
-    dTable[tid].clear();
+    if(iteration > this->getIterations()){
+      fprintf(stderr, "\nTID: %d, Iteration: %d Complete ", tid, iteration);
+      this->don = true;
+       // done.at(tid) = 1;
+        //      break;
+     }
 
+    fprintf(stderr,"\nTID: %d, iteration: %d ----", tid, iteration);
+
+   // pIdsCompleted[tid];
     return NULL;
   }
 
@@ -241,13 +276,14 @@ class Go : public MapReduce<KeyType, ValueType>
     //    ofile.close();
     this->subtractReduceTimes(tid, stime);
 
+    pthread_barrier_wait(&(barClear));
     //refineInit(tid);
     bndIndMap[tid].clear();
     dTable[tid].clear();
     // totalPECuts[tid] = 0; //will need to reset this once I figure out how to recalculate edge cuts
     //   bndSet = false;
     //cread(tid); //TODO need to find alternate way
-    // pthread_barrier_wait(&(mr->barRefine));
+     pthread_barrier_wait(&(barRefine));
 
     if(tid == 0){
       totalCuts = 0;
@@ -255,29 +291,16 @@ class Go : public MapReduce<KeyType, ValueType>
       fprintf(stderr,"\n Total EdgeCuts: %d\n", this->countTotalPECut(tid));
       //fprintf(stderr, "pagerank: thread %u iteration %d took %.3lf ms to process %llu vertices and %llu edges\n", tid, iteration, timevalToDouble(e) - timevalToDouble(s), nvertices, nedges);
     }
+    pthread_barrier_wait(&(barShutdown));
     clearRefineStructures(tid);
     return NULL;
-  }
-
-  void printParts(const unsigned tid, std::string fileName) {
-    //       std::cout<<std::endl<<"Partition "<< tid <<std::endl;
-    //  std::string outputPrefix = "testing";
-    ofile.open(fileName);
-    assert(ofile.is_open());
-    //   std::cout<<"\nFIlename: "<< fileName <<std::endl;
-    for(unsigned i = 0; i <= nvertices; ++i){
-      if(gWhere[i] != -1 && (gWhere[i] == tid || gWhere[i] == tid % nReducers)){
-        //      std::cout<<"\t"<<i << "\t" << gWhere[i]<< std::endl;
-        ofile<<i << "\t" << gWhere[i]<< std::endl;
-      }
-    }
-    ofile.close();
   }
 
   //---------------
   void ComputeBECut(const unsigned tid, const std::vector<unsigned>& where, InMemTable& bndind, const InMemoryContainer<KeyType, ValueType>& inMemMap) {
     IdType src;
     std::vector<unsigned> bndvert;
+      fprintf(stderr, "\nTID: %d, Computing EdgeCuts ", tid);
 
     for (InMemoryContainerConstIterator<KeyType, ValueType> it = inMemMap.begin(); it != inMemMap.end(); ++it) {
       src = it->first;
@@ -285,33 +308,34 @@ class Go : public MapReduce<KeyType, ValueType>
         bndvert.push_back(*vit);
       }
       //  refineMap[tid] = key; // assuming each thread writes at different index
+      unsigned nbrs = bndvert.size();
       int countTopK=0;
       int costE = 0;  //count external cost of edge
       //compute the number of edges cut for every key-values pair in the map
-//      fprintf(stderr, "\nTID: %d, Computing EdgeCuts ", tid);
       for(auto it = bndvert.begin(); it != bndvert.end(); ++it) { 
         IdType dst = *it;
         if( where[dst] != INIT_VAL && where[src] != where[dst] ) {
           totalPECuts[tid]++;
           costE++;
-          bndind[dst] = costE ;     
+          bndind[dst]++; // = costE ;     
         }
       }
       bndvert.clear();
 
       //calculate d-values
- //     fprintf(stderr, "\nTID: %d, Calculate DVals ", tid);
-      unsigned costI = nNbrs.at(src) - costE; 
+     fprintf(stderr, "\nTID: %d, Calculate DVals ", tid);
+      unsigned costI = nbrs - costE; 
       unsigned dsrc = costE - costI;      // External - Internal cost
       dTable[tid][src] = dsrc; 
-      // pthread_barrier_wait(&(barCompute)); //wait for the dvalues from all the threads to be populated
     } //end Compute edgecuts main Loop
+    //   pthread_barrier_wait(&(barCompute)); //wait for the dvalues from all the threads to be populated
   }
 
   //---------------
   unsigned computeGain(const unsigned tid, const unsigned hipart, const unsigned whereMax, std::vector<unsigned>& markMax, std::vector<unsigned>& markMin, const InMemoryContainer<KeyType, ValueType>& inMemMap){
     int maxG = 0;
     int maxvtx = -1, minvtx = -1; 
+     // fprintf(stderr, "\nTID: %d, Computing GAIN ", tid);
     for (auto it = dTable[hipart].begin(); it != dTable[hipart].end(); ++it) {
         // fprintf(stderr, "\nTId %d dTable hipart Begin: %d, dTable Size %d ----- " , tid,dTable[hipart].begin(), dTable[hipart].size());
       unsigned src = it->first; 
@@ -337,7 +361,7 @@ class Go : public MapReduce<KeyType, ValueType>
                    // fprintf(stderr, "\nTID: %d, Computing Gain Positive d-val ", tid);
                     std::vector<unsigned>::iterator it_min = std::find (markMin.begin(), markMin.end(), dst);
                     if(it_min != markMin.end()){     // check if the dst is in the masked vertices
-                      fprintf(stderr, "\nTID: %d, Computing Gain DST: %d is masked ", tid, dst);
+        //              fprintf(stderr, "\nTID: %d, Computing Gain DST: %d is masked ", tid, dst);
                       continue;
                     }
                   else{
@@ -356,7 +380,7 @@ class Go : public MapReduce<KeyType, ValueType>
                     else
                       currGain = dsrc + ddst - 2;
 
-                    fprintf(stderr, "\nTID: %d, src: %d, dst: %d, Gain: %d ", tid, src, dst, currGain);
+       //             fprintf(stderr, "\nTID: %d, src: %d, dst: %d, Gain: %d ", tid, src, dst, currGain);
 
                     if(currGain > maxG){                                                                                            maxG = currGain;
                       maxvtx = src;
@@ -373,13 +397,29 @@ class Go : public MapReduce<KeyType, ValueType>
       }
     //}
       if(maxvtx != -1 && minvtx != -1){
-        markMax[hipart] = maxvtx;
-        markMin[hipart] = minvtx;
+     //  fprintf(stderr, "\nTID: %d, MASKING src: %d, dst: %d, Gain: %d ", tid, maxvtx, minvtx, maxG);
+        markMax.push_back(maxvtx);
+        markMin.push_back(minvtx);
         return maxG;
       }
      return -1;
   }
 
+
+  void printParts(const unsigned tid, std::string fileName) {
+    //       std::cout<<std::endl<<"Partition "<< tid <<std::endl;
+    //  std::string outputPrefix = "testing";
+    ofile.open(fileName);
+    assert(ofile.is_open());
+    //   std::cout<<"\nFIlename: "<< fileName <<std::endl;
+    for(unsigned i = 0; i <= nvertices; ++i){
+      if(gWhere[i] != -1 && (gWhere[i] == tid || gWhere[i] == tid % nReducers)){
+        //      std::cout<<"\t"<<i << "\t" << gWhere[i]<< std::endl;
+        ofile<<i << "\t" << gWhere[i]<< std::endl;
+      }
+    }
+    ofile.close();
+  }
  //---------------
               unsigned countTotalPECut(const unsigned tid) {
                 //totalCuts = 0;
@@ -397,10 +437,18 @@ class Go : public MapReduce<KeyType, ValueType>
                     bndIndMap[i].clear();
                     // refineMap[i].clear();
                   }
+    pthread_barrier_destroy(&barRefine);
+    pthread_barrier_destroy(&barCompute);
+    pthread_barrier_destroy(&barEdgeCuts);
+    pthread_barrier_destroy(&barWriteInfo);
+    pthread_barrier_destroy(&barClear);
+    pthread_barrier_destroy(&barShutdown);
+    pthread_barrier_destroy(&barAfterRefine);
 
                   //  dTable->clear();
                   markMax->clear();
                   markMin->clear();
+                  fetchPIds->clear();
                   pIdsCompleted->clear();
                   delete[] totalPECuts;
                   delete[] bndIndMap;
@@ -409,6 +457,7 @@ class Go : public MapReduce<KeyType, ValueType>
                   delete[] markMin;
                   delete[] pIdsCompleted;
                   delete[] where;
+                  delete[] fetchPIds;
                 }
 //-----------------------------------
                 void clearMemorystructures(const unsigned tid){
@@ -417,6 +466,7 @@ class Go : public MapReduce<KeyType, ValueType>
                   markMax[tid].clear();
                   markMin[tid].clear();
                   dTable[tid].clear();
+                 // pIdsCompleted[tid].clear();
 
                 }
 
@@ -453,7 +503,7 @@ class Go : public MapReduce<KeyType, ValueType>
                     unsigned key2 = it_wh->first;
                     unsigned val2 = it_wh->second;
                     if((key1 == hipart && val1 == whereMax) || (key2 == whereMax && val2 == hipart)){
-                      //     fprintf(stderr,"\n TID %d hipart %d is already present\n", tid, hipart);
+                           fprintf(stderr,"\n TID %d hipart %d is already present\n", tid, hipart);
                       ret = false;
                     }
                     else
