@@ -15,9 +15,9 @@
 #include <ctime>
 #include <cstdlib>
 
-int nvertices;
-int nmappers;
-int nReducers;
+static int nvertices;
+static int nmappers;
+static int nReducers;
 //static uint64_t countTotalWords = 0;
 //pthread_mutex_t countTotal;
 //-------------------------------------------------
@@ -28,6 +28,13 @@ int nReducers;
 __thread unsigned iteration = 0;
 //__thread unsigned totalPECuts = 0;
 static std::string outputPrefix = "";
+static pthread_barrier_t barCompute;
+static pthread_barrier_t barEdgeCuts;
+static pthread_barrier_t barRefine;
+static pthread_barrier_t barWriteInfo;
+static pthread_barrier_t barAfterRefine;
+static pthread_barrier_t barClear;
+static pthread_barrier_t barShutdown;
 
 template <typename KeyType, typename ValueType>
 class Go : public MapReduce<KeyType, ValueType>
@@ -53,13 +60,6 @@ class Go : public MapReduce<KeyType, ValueType>
 
   unsigned totalCuts;
 
-  pthread_barrier_t barCompute;
-  pthread_barrier_t barEdgeCuts;
-  pthread_barrier_t barRefine;
-  pthread_barrier_t barWriteInfo;
-  pthread_barrier_t barAfterRefine;
-  pthread_barrier_t barClear;
-  pthread_barrier_t barShutdown;
   public:
 
   void* beforeMap(const unsigned tid) {
@@ -111,22 +111,8 @@ class Go : public MapReduce<KeyType, ValueType>
     return NULL;
   }
 
-  void* beforeReduce(const unsigned tid) {
-    //  unsigned int iters = 0;
-    //copy local partition ids to gWhere
-    fprintf(stderr, "\nTID: %d,BEFORE Reducing values \n", tid);
-    if(tid ==0){
-      this->gCopy(tid, gWhere);
-    }
-    //initialize barriers
-    pthread_barrier_init(&barRefine, 0, nReducers);
-    pthread_barrier_init(&barCompute, 0, nReducers);
-    pthread_barrier_init(&barEdgeCuts, 0, nReducers);
-    pthread_barrier_init(&barWriteInfo, 0, nReducers);
-    pthread_barrier_init(&barClear, 0, nReducers);
-    pthread_barrier_init(&barShutdown, 0, nReducers);
-    pthread_barrier_init(&barAfterRefine, 0, nReducers);
-
+     
+  void* initRefineStructs() {
     //initialize the locks to be used for synchronization
     for(unsigned i=0; i<nReducers; ++i) {
       pthread_mutex_t mutex;
@@ -145,21 +131,31 @@ class Go : public MapReduce<KeyType, ValueType>
     //  std::map<unsigned, unsigned> maxPair = new std::map<unsigned, unsigned>[this->nReducers];
     totalPECuts = new unsigned long long[nReducers];
     // fetchPIds = new std::set<unsigned>[nReducers];
-     
+   }
+
+  void* beforeReduce(const unsigned tid) {
+    //  unsigned int iters = 0;
+    //copy local partition ids to gWhere
+  //  fprintf(stderr, "\nTID: %d,BEFORE Reducing values \n", tid);
+    if(tid ==0){
+      this->gCopy(tid, gWhere);
+      this->initRefineStructs();
+    }
+
     refineInit(tid);
   }
 
 //--------------------------------------------------
 void refineInit(const unsigned tid) {
-
     for (unsigned i = 0; i < nReducers; i++) {
           fetchPIds[tid].insert(i);  //partition ids - 0,1,2 .. 
           pIdsCompleted[tid].push_back(false);
      }
+//fprintf(stderr,"\ntTID %d, RefineINit fetchPID size: %d ----", tid, fetchPIds[tid].size());
   //   bndIndMap[tid].clear();
    //  dTable[tid].clear();
   //   readNext[tid] = 0;
-   clearMemorystructures(tid);
+  // clearMemorystructures(tid);
      totalPECuts[tid] = 0;
      //bndSet = false;
      totalCuts = 0; 
@@ -170,7 +166,7 @@ void refineInit(const unsigned tid) {
     //countThreadWords += std::accumulate(values.begin(), values.end(), 0);
     long double sum = 0.0;
     // iterate each vertex neighbor in adjlist
-    fprintf(stderr, "\nTID: %d, Reducing values ", tid);
+    //fprintf(stderr, "\nTID: %d, Reducing values fetchPID Size: %d", tid, fetchPIds[tid].size());
     unsigned hipart = tid;
     // unsigned whereMax;
     for(auto it = fetchPIds[tid].begin(); it != fetchPIds[tid].end(); ++it) { 
@@ -178,9 +174,9 @@ void refineInit(const unsigned tid) {
       unsigned whereMax = *it; 
       fprintf(stderr, "\nTID: %d, WHEREMAX: %d ", tid, whereMax);
       if(whereMax == tid){
-      fprintf(stderr, "\nTID: %d pIdsCompleted[%d][%d]: %d ", tid, hipart, whereMax, pIdsCompleted[hipart][whereMax]);
+//      fprintf(stderr, "\nTID: %d pIdsCompleted[%d][%d]: %d ", tid, hipart, whereMax, pIdsCompleted[hipart][whereMax]);
         //pIdsCompleted[tid][*it] = true;
-      fprintf(stderr, "\nTID: %d going to NEXT Iter", tid);
+  //    fprintf(stderr, "\nTID: %d going to NEXT Iter", tid);
         continue;
       }
       else if (hipart < nReducers && whereMax >= nReducers){
@@ -191,11 +187,12 @@ void refineInit(const unsigned tid) {
           pIdsCompleted[tid][*it] = true;
           continue;
       }
-      fprintf(stderr, "\nFINAL TID: %d, WHEREMAX: %d ", tid, whereMax);
+//      fprintf(stderr, "\nFINAL TID: %d, WHEREMAX: %d ", tid, whereMax);
       bool ret = this->checkPIDStarted(tid, hipart, whereMax);
-      fprintf(stderr, "\nTID: %d, refining with: %d, ret: %d ", tid, whereMax, ret);
+//      fprintf(stderr, "\nTID: %d, refining with: %d, ret: %d ", tid, whereMax, ret);
       ComputeBECut(tid, gWhere, bndIndMap[tid], container);
       // wait for other threads to compute edgecuts before calculating dvalues values
+//      fprintf(stderr, "\nTID: %d, Before BarEDGECUTS ", tid);
       pthread_barrier_wait(&(barEdgeCuts)); 
 
       fprintf(stderr, "\nTID: %d, Computing Gain  Container: %d", tid, container.size());
@@ -203,24 +200,24 @@ void refineInit(const unsigned tid) {
         int maxG = -1;     
         do{
           maxG = computeGain(tid, hipart, whereMax, markMax[hipart], markMin[hipart], container);
-      fprintf(stderr, "\nTID: %d, MaxG > 0: %d", tid, maxG);
+    //  fprintf(stderr, "\nTID: %d, MaxG > 0: %d", tid, maxG);
         } while(maxG > 0);  //end do
       } // end if ret
 
-//      pthread_barrier_wait(&(barCompute)); 
+   //   pthread_barrier_wait(&(barCompute)); 
       if(ret == true) {
         //writePartInfo
 //        fprintf(stderr,"\nTID %d going to write part markMax size: %d ", tid, markMax[hipart].size());
         for(unsigned it=0; it<markMax[hipart].size(); it++){
           unsigned vtx1 = markMax[hipart].at(it);     //it->first;
           unsigned vtx2 = markMin[hipart].at(it);
-          fprintf(stderr,"\nTID %d whereMax %d vtx1: %d vtx2: %d  ", tid, whereMax, vtx1, vtx2);
+  //        fprintf(stderr,"\nTID %d whereMax %d vtx1: %d vtx2: %d  ", tid, whereMax, vtx1, vtx2);
           pthread_mutex_lock(&locks[tid]);
           gWhere.at(vtx1) = whereMax;
           gWhere.at(vtx2) = hipart;
           pthread_mutex_unlock(&locks[tid]);
           // pthread_mutex_unlock(&locks[tid]);
-          fprintf(stderr, "\nTID: %d, Change Where ", tid);
+//          fprintf(stderr, "\nTID: %d, Change Where ", tid);
           //changewhere
           where[hipart].at(vtx1) = gWhere[vtx1];
           where[hipart].at(vtx2) = gWhere[vtx2];  
@@ -230,13 +227,17 @@ void refineInit(const unsigned tid) {
         //  pthread_mutex_unlock(&locks[tid]);
         }
       }
-      fprintf(stderr, "\nTID: %d, Before BarWriteInfo ", tid);
-      pthread_barrier_wait(&(barWriteInfo));
-      fprintf(stderr, "\nTID: %d BEFORE pIdsCompleted[%d][%d]: %d ", tid, hipart, whereMax, pIdsCompleted[hipart][whereMax]);
-      pIdsCompleted[hipart][whereMax] = true;
-      fprintf(stderr, "\nTID: %d, AFTER pIdsCompleted: %d ", tid, pIdsCompleted[hipart][whereMax]);
+  //    fprintf(stderr, "\nTID: %d, Before BarWriteInfo ", tid);
+    // pthread_barrier_wait(&(barWriteInfo));
+    //  fprintf(stderr, "\nTID: %d BEFORE pIdsCompleted[%d][%d]: %d ", tid, hipart, whereMax, pIdsCompleted[hipart][whereMax]);
+ //TODO: This should be set true after the entire iteration is complete-- problem addressed below by clear()
+	 pIdsCompleted[hipart][whereMax] = true;
+    //  fprintf(stderr, "\nTID: %d, AFTER pIdsCompleted: %d ", tid, pIdsCompleted[hipart][whereMax]);
 
     }  // end of tid loop
+
+    // clearing up for next round of fetch from disk. It should be reset for each call to reduce operation so that each batch is refined against other when fetched from disk each time.
+    pIdsCompleted[tid].clear();
     return NULL;
   }
 
@@ -244,21 +245,22 @@ void refineInit(const unsigned tid) {
 
   void* updateReduceIter(const unsigned tid) {
 
+      //fprintf(stderr, "\nTID: %d, UPDATE reduce ITer ", tid);
       pthread_barrier_wait(&(barCompute));
+
       refineInit(tid);
-      //this->clearMemorystructures(tid);
-      fprintf(stderr, "\nTID: %d, Clearning Mem Structs----- ", tid);
+      clearMemorystructures(tid);
+
     ++iteration;
     if(iteration > this->getIterations()){
-      fprintf(stderr, "\nTID: %d, Iteration: %d Complete ", tid, iteration);
-      this->don = true;
+//      fprintf(stderr, "\nTID: %d, Iteration: %d Complete ", tid, iteration);
+      don = true;
        // done.at(tid) = 1;
         //      break;
      }
 
     fprintf(stderr,"\nTID: %d, iteration: %d ----", tid, iteration);
 
-   // pIdsCompleted[tid];
     return NULL;
   }
 
@@ -267,6 +269,7 @@ void refineInit(const unsigned tid) {
     //fprintf(stderr, "AfterReduce\n");
     fprintf(stderr, "\nthread %u waiting for others to finish Refine\n", tid);
     pthread_barrier_wait(&(barAfterRefine));
+ 
     if(tid == 0)
       this->gCopy(tid, gWhere);
 
@@ -276,10 +279,11 @@ void refineInit(const unsigned tid) {
     //    ofile.close();
     this->subtractReduceTimes(tid, stime);
 
-    pthread_barrier_wait(&(barClear));
-    //refineInit(tid);
-    bndIndMap[tid].clear();
-    dTable[tid].clear();
+    //pthread_barrier_wait(&(barClear));
+    refineInit(tid);
+    clearMemorystructures(tid);
+    //bndIndMap[tid].clear();
+    //dTable[tid].clear();
     // totalPECuts[tid] = 0; //will need to reset this once I figure out how to recalculate edge cuts
     //   bndSet = false;
     //cread(tid); //TODO need to find alternate way
@@ -292,8 +296,26 @@ void refineInit(const unsigned tid) {
       //fprintf(stderr, "pagerank: thread %u iteration %d took %.3lf ms to process %llu vertices and %llu edges\n", tid, iteration, timevalToDouble(e) - timevalToDouble(s), nvertices, nedges);
     }
     pthread_barrier_wait(&(barShutdown));
-    clearRefineStructures(tid);
-    return NULL;
+/*	 if (s == 0) {
+            printf("Thread %ld passed barrier SHUTDOWN: return value was 0\n",
+                    tid);
+
+        } else if (s == PTHREAD_BARRIER_SERIAL_THREAD) {
+            printf("Thread %ld passed barrier SHUTDOWN: return value was "
+                    "PTHREAD_BARRIER_SERIAL_THREAD\n", tid);
+
+            usleep(100000);
+            printf("\n");
+
+        }
+	 else {        
+            printf("\npthread_barrier_wait (%ld)", tid);
+        }
+ */
+    if(tid == 0){
+    clearRefineStructures();
+    }
+  return NULL;
   }
 
   //---------------
@@ -323,7 +345,7 @@ void refineInit(const unsigned tid) {
       bndvert.clear();
 
       //calculate d-values
-     fprintf(stderr, "\nTID: %d, Calculate DVals ", tid);
+    // fprintf(stderr, "\nTID: %d, Calculate DVals ", tid);
       unsigned costI = nbrs - costE; 
       unsigned dsrc = costE - costI;      // External - Internal cost
       dTable[tid][src] = dsrc; 
@@ -432,9 +454,9 @@ void refineInit(const unsigned tid) {
                 }
 
 //-----------------------------------
-                void clearRefineStructures(const unsigned tid){
+                void clearRefineStructures(){
                   for (unsigned i = 0; i < nReducers; i++){
-                    bndIndMap[i].clear();
+                  //  bndIndMap[i].clear();
                     // refineMap[i].clear();
                   }
     pthread_barrier_destroy(&barRefine);
@@ -503,7 +525,7 @@ void refineInit(const unsigned tid) {
                     unsigned key2 = it_wh->first;
                     unsigned val2 = it_wh->second;
                     if((key1 == hipart && val1 == whereMax) || (key2 == whereMax && val2 == hipart)){
-                           fprintf(stderr,"\n TID %d hipart %d is already present\n", tid, hipart);
+                           //fprintf(stderr,"\n TID %d hipart %d is already present\n", tid, hipart);
                       ret = false;
                     }
                     else
@@ -558,7 +580,7 @@ void refineInit(const unsigned tid) {
               std::string folderpath = argv[1];
               int gb = atoi(argv[2]);
               nmappers = atoi(argv[3]);
-              int nreducers = atoi(argv[4]); // here nreducers = npartitions
+              nReducers = atoi(argv[4]); // here nreducers = npartitions
               // int npartitions = 2;
               int npartitions;
               //int nvertices;
@@ -567,7 +589,7 @@ void refineInit(const unsigned tid) {
 #ifdef USE_GOMR
               nvertices = atoi(argv[7]);
               npartitions = atoi(argv[8]); //partitions
-              outputPrefix = atoi(argv[9]);
+              outputPrefix = argv[9];
 #else
               nvertices = -1;
               npartitions = 2; ///iterations if not using GOMR
@@ -579,8 +601,16 @@ void refineInit(const unsigned tid) {
               assert(batchSize > 0);
               //pthread_mutex_init(&countTotal, NULL);
 
-              nReducers = nreducers;
-              go.init(folderpath, gb, nmappers, nreducers, nvertices, batchSize, kitems, npartitions);
+             // nReducers = nreducers;
+    //initialize barriers
+    pthread_barrier_init(&barRefine, NULL, nReducers);
+    pthread_barrier_init(&barCompute, NULL, nReducers);
+    pthread_barrier_init(&barEdgeCuts, NULL, nReducers);
+    pthread_barrier_init(&barWriteInfo, NULL, nReducers);
+    pthread_barrier_init(&barClear, NULL, nReducers);
+    pthread_barrier_init(&barShutdown, NULL, nReducers);
+    pthread_barrier_init(&barAfterRefine, NULL, nReducers);
+              go.init(folderpath, gb, nmappers, nReducers, nvertices, batchSize, kitems, npartitions);
 
               double runTime = -getTimer();
               go.run(); 

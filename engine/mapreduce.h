@@ -10,6 +10,8 @@
 // From the Definitive Guide: 
 //  - https://books.google.com/books?id=drbI_aro20oC&lpg=PA208&ots=t_xmwdgWg5&dq=hadoop%20sorting%20and%20shuffling%20the%20definitive%20guide&pg=PA208#v=onepage&q&f=true
 
+__thread bool don;
+
 template <typename KeyType, typename ValueType>
 void* doMap(void* arg);
 
@@ -31,7 +33,8 @@ class MapReduce
     //       and also helps with write(), read() and sort() etc.
     // TODO: Setup timers
     virtual void* beforeMap(const unsigned tid) { };
-    virtual void* map(const unsigned tid, const unsigned fileId, const std::string& input) = 0;
+    //virtual void* map(const unsigned tid, const unsigned fileId, const std::string& input) = 0;
+    virtual void* map(const unsigned tid, const std::string& input, const unsigned lineId) = 0;
     virtual void* afterMap(const unsigned tid) { };
     virtual void* beforeReduce(const unsigned tid) { };
  #ifdef USE_GOMR  
@@ -62,6 +65,7 @@ class MapReduce
   //  inline static void done() { don = true; }
     void notDone(const unsigned tid){ don = false; }
     inline unsigned int getIterations() { return nIterations; }
+void partitionInputForParallelReads();
 
     // Variables. Ideally, make these private and provide getters/setters.
     unsigned nVertices;
@@ -71,8 +75,10 @@ class MapReduce
     unsigned batchSize;  //Number of items in a batch
     unsigned kBItems;  //Top-k items to be fetched from in memory map
     unsigned gb;
+    IdType numLines;
     std::vector<double> map_times;
     std::vector<double> reduce_times;
+    std::vector<unsigned> end_read;
 
     std::vector<std::string> fileList;
 
@@ -84,13 +90,17 @@ class MapReduce
     friend void* doInMemoryReduce<KeyType, ValueType>(void* arg);
 
   protected:
-   bool don;
 
   private:
     // Variables
     std::string inputFolder;
+    std::string inputFileName;
+        size_t bytesPerFile;
+        size_t linesPerThread;
     //static unsigned int nIterations;
    // static bool done;
     MapWriter<KeyType, ValueType> writer;
+
+
 };
 
