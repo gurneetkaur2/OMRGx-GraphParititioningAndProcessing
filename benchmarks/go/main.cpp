@@ -319,6 +319,18 @@ void refineInit(const unsigned tid) {
   }
 
   //---------------
+  InMemoryContainer<KeyType, ValueType>& readAfterReduce(const unsigned tid, InMemoryContainer<KeyType, ValueType>& container) {
+   // this->cRead(tid);	
+   return container; 
+}
+
+  //---------------
+  void writeAfterReduce(const unsigned tid, InMemoryContainer<KeyType, ValueType>& container) {
+   this->cWrite(tid, container.size(), container.end());	
+   //return container; 
+//   }
+}
+  //---------------
   void ComputeBECut(const unsigned tid, const std::vector<unsigned>& where, InMemTable& bndind, const InMemoryContainer<KeyType, ValueType>& inMemMap) {
     IdType src;
     std::vector<unsigned> bndvert;

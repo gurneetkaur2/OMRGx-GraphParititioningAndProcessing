@@ -130,6 +130,7 @@ void* doReduce(void* arg)
       if(execLoop == false) {
 #ifdef USE_GOMR
         mr->reduce(tid, writer.readBufMap[tid]);
+	mr->cWrite(tid, readBufMap[tid].size(), readBufMap[tid].end());
 #else
         for(InMemoryContainerConstIterator<KeyType, ValueType> it = writer.readBufMap[tid].begin(); it != writer.readBufMap[tid].end(); ++it)
           mr->reduce(tid, it->first, it->second);
@@ -391,6 +392,11 @@ void MapReduce<KeyType, ValueType>::writeBuf(const unsigned tid, const KeyType& 
 template <typename KeyType, typename ValueType>
 bool MapReduce<KeyType, ValueType>::read(const unsigned tid) {
   return writer.read(tid);
+}
+
+template <typename KeyType, typename ValueType>
+bool MapReduce<KeyType, ValueType>::cWrite(const unsigned tid, unsigned noItems, InMemoryContainerConstIterator<KeyType, ValueType> end) {
+  return writer.cWrite(tid,noItems, end);
 }
 
 //--------------------------------------------

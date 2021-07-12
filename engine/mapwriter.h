@@ -40,6 +40,8 @@ std::vector<double> flushResidues_times;
 std::vector<double> infinimem_read_times;
 std::vector<double> infinimem_write_times;
 std::vector<uint64_t> localCombinedPairs; 
+std::vector<double> infinimem_cread_times;
+std::vector<double> infinimem_cwrite_times;
 
 template <typename KeyType, typename ValueType>
 void* combine(const KeyType& key, std::vector<ValueType>& to, const std::vector<ValueType>& from);
@@ -68,6 +70,9 @@ class MapWriter
     void performWrite(const unsigned tid, const unsigned buffer, const KeyType& key, const ValueType& value); //GK
     void writeToInfinimem(const unsigned buffer, const IdType startKey, unsigned nItems, const InMemoryContainer<KeyType, ValueType>& inMemMap); //GK
     bool read(const unsigned tid);
+    void cRead(const unsigned tid);
+    void cWrite(const unsigned tid, unsigned noItems, InMemoryContainerConstIterator<KeyType, ValueType> end);
+    void cWriteToInfinimem(const unsigned buffer, const IdType startKey, unsigned noItems, InMemoryContainerConstIterator<KeyType, ValueType> begin, InMemoryContainerConstIterator<KeyType, ValueType> end);
     void readInit(const unsigned tid);
     void readClear(const unsigned tid);
     void releaseMapStructures();
@@ -103,6 +108,7 @@ class MapWriter
     bool firstInit;
     //IdType* cTotalKeys; //GK
     IdType* nItems; //GK
+    IdType* totalCombined;
     InMemoryContainer<KeyType, ValueType>* outBufMap;  //GK
 //    std::vector<unsigned>* prev;
 //    std::vector<unsigned>* next;
@@ -110,6 +116,7 @@ class MapWriter
     IdType* totalKeysInFile;
     std::vector<pthread_mutex_t> locks;
     FileIO<RecordType> *io;  //GK
+    FileIO<RecordType> *cio;
     bool writtenToDisk;
 };
 

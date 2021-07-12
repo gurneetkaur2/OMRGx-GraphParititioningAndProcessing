@@ -33,6 +33,7 @@ void MapWriter<KeyType, ValueType>::initBuf(unsigned nMappers, unsigned nReducer
   //cTotalKeys = new IdType[nBuffers];
   totalKeysInFile = new IdType[nCols];
   //nReadKeys = new IdType[nBuffers];
+  totalCombined = new IdType[nCols];
   nItems = new IdType[nRows * nCols];
 //  prev = new std::vector<unsigned>[nCols];
 //  next = new std::vector<unsigned>[nCols];
@@ -62,6 +63,7 @@ void MapWriter<KeyType, ValueType>::initBuf(unsigned nMappers, unsigned nReducer
 #else
   io = new TwoPhaseFileIO<RecordType>("/tmp/gkaur007/mrdata/", nCols, 0/*UNUSED*/);
 #endif
+  cio = new TwoPhaseFileIO<RecordType>("/tmp/gkaur007/combdata/", nCols, 0/*UNUSED*/);
 }
 
 //-------------------------------------------------
@@ -100,6 +102,7 @@ void MapWriter<KeyType, ValueType>::shutdown()
   //	delete[] outBufMap;
   delete[] totalKeysInFile;
   //delete[] nReadKeys;
+  delete[] totalCombined;
   delete[] readBufMap;
   delete[] lookUpTable;
   delete[] fetchBatchIds;
@@ -399,6 +402,7 @@ void MapWriter<KeyType, ValueType>::writeToInfinimem(const unsigned buffer, cons
 #endif
 
     ++ct;
+    totalCombined[buffer]++;
   }
   assert(ct == noItems);
   // 2. Write to infinimem partition -- infinimem locks to guarantee correct writes 
@@ -427,6 +431,7 @@ void MapWriter<KeyType, ValueType>::betterWriteToInfinimem(const unsigned buffer
 #endif
 
     ++ct;
+    totalCombined[buffer]++;
   }
 
   assert(ct == noItems);
@@ -466,6 +471,7 @@ void MapWriter<KeyType, ValueType>::readInit(const unsigned tid)
     batchesCompleted[tid].push_back(false); // to check which batch has been read completely
     keysPerBatch[tid].push_back(kBItems); // how many keys are read from each batch
   }
+  totalCombined[tid] = 0;
 }
 //-------------------------------------------------
 // Reads *ALL* data from disk into container
@@ -578,3 +584,73 @@ bool MapWriter<KeyType, ValueType>::getNextMinKey(InMemoryReductionState<KeyType
 
   return true;
 }
+
+template <typename KeyType, typename ValueType>
+void MapWriter<KeyType, ValueType>::cRead(const unsigned tid) {
+ // fprintf(stderr, "\nDoRefine: readNext[tid]: %d\n", readNext[tid]);
+don = false;
+
+while(true) {
+//  fprintf(stderr, "\nDoRefine: Calling Read\n");
+    bool execLoop;
+    if(!getWrittenToDisk()){
+    // for in-memory reads
+      execLoop = 0;//readInMem(tid);
+    }
+   else{
+       execLoop = read(tid);
+    }
+//    fprintf(stderr, "\nExecloop is %d, TID %d", execLoop, tid);
+  // fprintf(stderr,"\nCREAD totalCuts: %d\n", totalCuts);
+    if(execLoop == false) {
+         readAfterReduce(tid, readBufMap[tid]);
+       //  if(tid == 0) countTotalPECut(tid);
+	 don = true;
+         break;
+    }
+
+   // Read the kitems from infinimem and compute the edgecuts for that part
+        don = false;
+	readAfterReduce(tid, readBufMap[tid]);
+    //countTotalPECut(tid);
+        readBufMap[tid].erase(readBufMap[tid].begin(), readBufMap[tid].end());
+  }
+}
+//cwrite should be run always after cread
+//--------------------------------------------------
+template <typename KeyType, typename ValueType>
+void MapWriter<KeyType, ValueType>::cWrite(const unsigned tid, unsigned noItems, InMemoryContainerConstIterator<KeyType, ValueType> end) {
+  
+  unsigned buffer = tid % nCols;
+// fprintf(stderr, "\nThread %d cWrite to partition %d\n", tid, buffer); 
+    
+  infinimem_cwrite_times[tid] -= getTimer();
+    pthread_mutex_lock(&locks[buffer]);
+  cWriteToInfinimem(buffer, totalCombined[tid], noItems, readBufMap[tid].begin(), end);
+    pthread_mutex_unlock(&locks[buffer]);
+    infinimem_cwrite_times[tid] += getTimer();
+//    fprintf(stderr,"\n*********TID: %d Total Combined : %d \n\n", tid, totalCombined[buffer]); 
+}
+  
+//--------------------------------------------------
+template <typename KeyType, typename ValueType>
+void MapWriter<KeyType, ValueType>::cWriteToInfinimem(const unsigned buffer, const IdType startKey, unsigned noItems, InMemoryContainerConstIterator<KeyType, ValueType> begin, InMemoryContainerConstIterator<KeyType, ValueType> end) {
+  RecordType* records = new RecordType[noItems];
+  unsigned ct = 0;
+
+  for (InMemoryContainerConstIterator<KeyType, ValueType> it = begin; it != end; ++it) {
+     records[ct].set_key(it->first);
+      fprintf(stderr,"\n BWTI- TID: %d, startKey: %d, Key: %d\t, Values: ", buffer, startKey, it->first); 
+
+    for (std::vector<unsigned>::const_iterator vit = it->second.begin(); vit != it->second.end(); ++vit){
+      records[ct].add_values(*vit);
+      fprintf(stderr,"%d\t", *vit); 
+      }
+      ++ct;
+      totalCombined[buffer]++;
+  }
+
+  assert(ct == noItems);
+  cio->file_set_batch(buffer, startKey, noItems, records);
+ delete[] records;
+} 

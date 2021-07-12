@@ -44,6 +44,8 @@ class MapReduce
  #endif
     virtual void* updateReduceIter(const unsigned tid) { };
     virtual void* afterReduce(const unsigned tid) { };
+    virtual InMemoryContainer<KeyType, ValueType>& readAfterReduce(const unsigned tid, const InMemoryContainer<KeyType, ValueType>& container) { };
+    virtual void* writeAfterReduce(const unsigned tid, const InMemoryContainer<KeyType, ValueType>& container) { };
      
     // System provided default; overridable by user
     virtual void run();
@@ -59,6 +61,7 @@ class MapReduce
     //bool read(const unsigned tid, MapBuffer<KeyType, ValueType>& container, std::vector<int>& keysPerBatch, MapBuffer<KeyType, unsigned>& lookUpTable, std::queue<int>& fetchBatchIds);  //GK
     bool read(const unsigned tid);
     void readInit(const unsigned buffer);
+    void cWrite(const unsigned tid, unsigned noItems, InMemoryContainerConstIterator<KeyType, ValueType> end);
     void subtractReduceTimes(const unsigned tid, const double stime);
    // bool getDone(const unsigned tid){
     bool getDone(const unsigned tid) { return don; }
