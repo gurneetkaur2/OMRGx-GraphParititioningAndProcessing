@@ -619,6 +619,11 @@ while(true) {
 //cwrite should be run always after cread
 //--------------------------------------------------
 template <typename KeyType, typename ValueType>
+void MapWriter<KeyType, ValueType>::cWrite(const unsigned tid) {
+     cWrite(tid, readBufMap[tid].size(), readBufMap[tid].end());
+}
+//--------------------------------------------------
+template <typename KeyType, typename ValueType>
 void MapWriter<KeyType, ValueType>::cWrite(const unsigned tid, unsigned noItems, InMemoryContainerConstIterator<KeyType, ValueType> end) {
   
   unsigned buffer = tid % nCols;
