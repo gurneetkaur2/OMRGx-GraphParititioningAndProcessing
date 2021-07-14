@@ -287,11 +287,13 @@ void refineInit(const unsigned tid) {
     // totalPECuts[tid] = 0; //will need to reset this once I figure out how to recalculate edge cuts
     //   bndSet = false;
     //cread(tid); //TODO need to find alternate way
+      this->readAfterReduce(tid);
      pthread_barrier_wait(&(barRefine));
 
     if(tid == 0){
       totalCuts = 0;
       //  time_refine += getTimer();
+      
       fprintf(stderr,"\n Total EdgeCuts: %d\n", this->countTotalPECut(tid));
       //fprintf(stderr, "pagerank: thread %u iteration %d took %.3lf ms to process %llu vertices and %llu edges\n", tid, iteration, timevalToDouble(e) - timevalToDouble(s), nvertices, nedges);
     }
@@ -319,9 +321,15 @@ void refineInit(const unsigned tid) {
   }
 
   //---------------
-  InMemoryContainer<KeyType, ValueType>& readAfterReduce(const unsigned tid, InMemoryContainer<KeyType, ValueType>& container) {
-   // this->cRead(tid);	
-   return container; 
+  void* readAfterReduce(const unsigned tid) {
+   // this->cRead(tid);
+   don = false;
+   while(!this->getDone(tid)){
+      InMemoryContainer<KeyType, ValueType>& container = this->cRead(tid);
+   fprintf(stderr, "\nTID: %d, Reading Container iSize: %d" , tid, container.size());
+
+      ComputeBECut(tid, gWhere, bndIndMap[tid], container);
+   } 
 }
 
   //---------------
@@ -348,6 +356,7 @@ void refineInit(const unsigned tid) {
       //compute the number of edges cut for every key-values pair in the map
       for(auto it = bndvert.begin(); it != bndvert.end(); ++it) { 
         IdType dst = *it;
+	//fprintf(stderr,"\nTID: %d, where[%d]: %d != where[%d]: %d ", tid, src, where[src], dst, where[dst]);
         if( where[dst] != INIT_VAL && where[src] != where[dst] ) {
           totalPECuts[tid]++;
           costE++;
