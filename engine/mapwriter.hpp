@@ -35,6 +35,7 @@ void MapWriter<KeyType, ValueType>::initBuf(unsigned nMappers, unsigned nReducer
   //nReadKeys = new IdType[nBuffers];
   totalCombined = new IdType[nCols];
   nItems = new IdType[nRows * nCols];
+  readNext = new IdType[nCols];
 //  prev = new std::vector<unsigned>[nCols];
 //  next = new std::vector<unsigned>[nCols];
 
@@ -87,6 +88,7 @@ void MapWriter<KeyType, ValueType>::releaseMapStructures()
 void MapWriter<KeyType, ValueType>::shutdown()
 {
   delete io;
+  delete cio;
   //AK : segfault clear
   //	outBufMap->clear();
   readBufMap->clear();
@@ -100,6 +102,7 @@ void MapWriter<KeyType, ValueType>::shutdown()
   //	delete[] cTotalKeys;
   //	delete[] nItems;
   //	delete[] outBufMap;
+  delete[] readNext;
   delete[] totalKeysInFile;
   //delete[] nReadKeys;
   delete[] totalCombined;
@@ -453,7 +456,8 @@ void MapWriter<KeyType, ValueType>::readClear(const unsigned tid)
        readNextInBatch[tid].clear();
     fetchBatchIds[tid].clear(); 
     batchesCompleted[tid].clear();
-    keysPerBatch[tid].clear(); 
+    keysPerBatch[tid].clear();
+    readNext[tid] = 0; 
  // }
 }
 
@@ -586,37 +590,37 @@ bool MapWriter<KeyType, ValueType>::getNextMinKey(InMemoryReductionState<KeyType
 }
 
 template <typename KeyType, typename ValueType>
-void MapWriter<KeyType, ValueType>::cRead(const unsigned tid) {
- // fprintf(stderr, "\nDoRefine: readNext[tid]: %d\n", readNext[tid]);
-don = false;
+InMemoryContainer<KeyType, ValueType>& MapWriter<KeyType, ValueType>::cRead(const unsigned tid) {
 
-while(true) {
-//  fprintf(stderr, "\nDoRefine: Calling Read\n");
+  //fprintf(stderr, "\nDoRefine: Calling Read\n");
     bool execLoop;
+       //Erase previously added data as I am returning later without erasing
     if(!getWrittenToDisk()){
     // for in-memory reads
-      execLoop = 0;//readInMem(tid);
+	 don = true;
+         return readBufMap[tid];
     }
    else{
-       execLoop = read(tid);
+    if(getWrittenToDisk() && readBufMap[tid].size() > 0)
+  	readBufMap[tid].erase(readBufMap[tid].begin(), readBufMap[tid].end());
+
+    execLoop = cDiskRead(tid);
     }
-//    fprintf(stderr, "\nExecloop is %d, TID %d", execLoop, tid);
+
+ //   fprintf(stderr, "\nExecloop is %d, TID %d, ContainerSize: %d ", execLoop, tid, readBufMap[tid].size());
   // fprintf(stderr,"\nCREAD totalCuts: %d\n", totalCuts);
     if(execLoop == false) {
-         readAfterReduce(tid, readBufMap[tid]);
-       //  if(tid == 0) countTotalPECut(tid);
 	 don = true;
-         break;
+         return readBufMap[tid];
+         //readAfterReduce(tid, readBufMap[tid]);
+       //  if(tid == 0) countTotalPECut(tid);
+       //  break;
     }
 
    // Read the kitems from infinimem and compute the edgecuts for that part
         don = false;
-	readAfterReduce(tid, readBufMap[tid]);
-    //countTotalPECut(tid);
-        readBufMap[tid].erase(readBufMap[tid].begin(), readBufMap[tid].end());
-  }
+         return readBufMap[tid];
 }
-//cwrite should be run always after cread
 //--------------------------------------------------
 template <typename KeyType, typename ValueType>
 void MapWriter<KeyType, ValueType>::cWrite(const unsigned tid) {
@@ -627,14 +631,14 @@ template <typename KeyType, typename ValueType>
 void MapWriter<KeyType, ValueType>::cWrite(const unsigned tid, unsigned noItems, InMemoryContainerConstIterator<KeyType, ValueType> end) {
   
   unsigned buffer = tid % nCols;
-// fprintf(stderr, "\nThread %d cWrite to partition %d\n", tid, buffer); 
+// fprintf(stderr, "\nThread %d cWrite to partition %d noItems: %d \n", tid, buffer, noItems); 
     
   infinimem_cwrite_times[tid] -= getTimer();
     pthread_mutex_lock(&locks[buffer]);
   cWriteToInfinimem(buffer, totalCombined[tid], noItems, readBufMap[tid].begin(), end);
     pthread_mutex_unlock(&locks[buffer]);
     infinimem_cwrite_times[tid] += getTimer();
-//    fprintf(stderr,"\n*********TID: %d Total Combined : %d \n\n", tid, totalCombined[buffer]); 
+  //  fprintf(stderr,"\n*********TID: %d Total Combined : %d \n\n", tid, totalCombined[buffer]); 
 }
   
 //--------------------------------------------------
@@ -645,11 +649,11 @@ void MapWriter<KeyType, ValueType>::cWriteToInfinimem(const unsigned buffer, con
 
   for (InMemoryContainerConstIterator<KeyType, ValueType> it = begin; it != end; ++it) {
      records[ct].set_key(it->first);
-      fprintf(stderr,"\n BWTI- TID: %d, startKey: %d, Key: %d\t, Values: ", buffer, startKey, it->first); 
+//      fprintf(stderr,"\n BWTI- TID: %d, startKey: %d, Key: %d\t, Values: ", buffer, startKey, it->first); 
 
     for (std::vector<unsigned>::const_iterator vit = it->second.begin(); vit != it->second.end(); ++vit){
       records[ct].add_values(*vit);
-      fprintf(stderr,"%d\t", *vit); 
+    //  fprintf(stderr,"%d\t", *vit); 
       }
       ++ct;
       totalCombined[buffer]++;
@@ -658,4 +662,44 @@ void MapWriter<KeyType, ValueType>::cWriteToInfinimem(const unsigned buffer, con
   assert(ct == noItems);
   cio->file_set_batch(buffer, startKey, noItems, records);
  delete[] records;
-} 
+}
+
+//========================= 
+template <typename KeyType, typename ValueType>
+bool MapWriter<KeyType, ValueType>::cDiskRead(const unsigned tid) {
+
+  infinimem_cread_times[tid] -= getTimer();
+  unsigned partition = tid;
+    unsigned partbound = min(totalCombined[tid]-readNext[tid], kBItems);
+  RecordType* parts = new RecordType[partbound];
+ //fprintf(stderr,"\nREFINE tid: %d, totalCombined: %d, readNext[tid]: %d, keys to read: %d \n", tid, totalCombined[tid], readNext[tid], partbound);
+ //for(unsigned ckey = readNextInBatch[partition]; ckey < totalCombined[partition]; ckey += batchSize){
+    if (partbound > 0 && readNext[tid] < totalCombined[tid])
+      cio->file_get_batch(tid, readNext[tid], partbound, parts);
+
+  //  fprintf(stderr,"\nREFINE- tid: %d  BATCHSIZE: %d, Map size: %d, readNext: %d \n", tid, batchSize, refineMap[tid].size(), readNext[tid]);
+    for (unsigned i = 0; i < partbound; i++) {
+      readBufMap[tid][parts[i].key()];
+//      fprintf(stderr,"\nREFINE- TID: %d, Key: %d\t Values: ", tid, parts[i].rank()); 
+
+      for (unsigned k = 0; k < parts[i].values_size(); k++){
+        readBufMap[tid][parts[i].key()].push_back(parts[i].values(k));
+   //        fprintf(stderr,"\nREFINE - key: %d value: %d\n", parts[i].key(), parts[i].values_size());
+     }
+   }
+
+    //fprintf(stderr,"\nREFINE - tid: %d, RefineMap size: %d", tid, refineMap[tid].size());
+    readNext[tid] += partbound;
+    //fprintf(stderr,"\nREFINE update-  tid: %d Total Combined: %d, readNext: %d \n", tid, totalCombined[tid], readNext[tid]);
+
+  bool ret = false;
+    if (readNext[tid] < totalCombined[tid]){
+        ret = true;
+  //      fprintf(stderr, "\nREFINE - still reading - tid: %d, readNext: %d, totalCombined: %d, ret: %d \n", tid, readNext[tid], totalCombined[tid], ret);
+    }
+
+  infinimem_cread_times[tid] += getTimer();
+  delete[] parts;
+  return ret;
+}
+//========================= 

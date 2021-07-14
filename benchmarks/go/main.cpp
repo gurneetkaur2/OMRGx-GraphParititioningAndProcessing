@@ -324,17 +324,18 @@ void refineInit(const unsigned tid) {
   void* readAfterReduce(const unsigned tid) {
    // this->cRead(tid);
    don = false;
+// fprintf(stderr,"\nTID: %d COmputeEC TotalPECUTs: %d ", tid, totalPECuts[tid]);
    while(!this->getDone(tid)){
-      InMemoryContainer<KeyType, ValueType>& container = this->cRead(tid);
-   fprintf(stderr, "\nTID: %d, Reading Container iSize: %d" , tid, container.size());
+         InMemoryContainer<KeyType, ValueType>& container = this->cRead(tid);
+  // fprintf(stderr, "\nTID: %d, Reading Container iSize: %d" , tid, container.size());
 
       ComputeBECut(tid, gWhere, bndIndMap[tid], container);
    } 
 }
 
   //---------------
-  void writeAfterReduce(const unsigned tid, InMemoryContainer<KeyType, ValueType>& container) {
-   this->cWrite(tid, container.size(), container.end());	
+  void* writeAfterReduce(const unsigned tid, const InMemoryContainer<KeyType, ValueType>& container) {
+   this->cWrite(tid); // container.size(), container.end());	
    //return container; 
 //   }
 }
@@ -356,8 +357,8 @@ void refineInit(const unsigned tid) {
       //compute the number of edges cut for every key-values pair in the map
       for(auto it = bndvert.begin(); it != bndvert.end(); ++it) { 
         IdType dst = *it;
-	//fprintf(stderr,"\nTID: %d, where[%d]: %d != where[%d]: %d ", tid, src, where[src], dst, where[dst]);
         if( where[dst] != INIT_VAL && where[src] != where[dst] ) {
+//	fprintf(stderr,"\nTID: %d, where[%d]: %d != where[%d]: %d ", tid, src, where[src], dst, where[dst]);
           totalPECuts[tid]++;
           costE++;
           bndind[dst]++; // = costE ;     
@@ -468,6 +469,7 @@ void refineInit(const unsigned tid) {
                 //totalCuts = 0;
                 for(unsigned i=0; i<nReducers; i++){
                   //for(auto i=fetchPIds.begin(); i != fetchPIds.end(); ++i){
+ //		fprintf(stderr,"\nTID: %d TotalPECUTs: %d ", tid, totalPECuts[i]);
                   totalCuts += totalPECuts[i];
                 }
 

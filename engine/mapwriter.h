@@ -70,12 +70,13 @@ class MapWriter
     void performWrite(const unsigned tid, const unsigned buffer, const KeyType& key, const ValueType& value); //GK
     void writeToInfinimem(const unsigned buffer, const IdType startKey, unsigned nItems, const InMemoryContainer<KeyType, ValueType>& inMemMap); //GK
     bool read(const unsigned tid);
-    void cRead(const unsigned tid);
+    InMemoryContainer<KeyType, ValueType>& cRead(const unsigned tid);
     void cWrite(const unsigned tid);
     void cWrite(const unsigned tid, unsigned noItems, InMemoryContainerConstIterator<KeyType, ValueType> end);
     void cWriteToInfinimem(const unsigned buffer, const IdType startKey, unsigned noItems, InMemoryContainerConstIterator<KeyType, ValueType> begin, InMemoryContainerConstIterator<KeyType, ValueType> end);
     void readInit(const unsigned tid);
     void readClear(const unsigned tid);
+    bool cDiskRead(const unsigned tid);
     void releaseMapStructures();
     void shutdown();
 
@@ -110,6 +111,7 @@ class MapWriter
     //IdType* cTotalKeys; //GK
     IdType* nItems; //GK
     IdType* totalCombined;
+    IdType* readNext;
     InMemoryContainer<KeyType, ValueType>* outBufMap;  //GK
 //    std::vector<unsigned>* prev;
 //    std::vector<unsigned>* next;

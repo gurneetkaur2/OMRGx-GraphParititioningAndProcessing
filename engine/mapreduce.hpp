@@ -130,7 +130,8 @@ void* doReduce(void* arg)
       if(execLoop == false) {
 #ifdef USE_GOMR
         mr->reduce(tid, writer.readBufMap[tid]);
-	mr->cWrite(tid);
+//	mr->cWrite(tid);
+	writer.cWrite(tid, writer.readBufMap[tid].size(), writer.readBufMap[tid].end());
 #else
         for(InMemoryContainerConstIterator<KeyType, ValueType> it = writer.readBufMap[tid].begin(); it != writer.readBufMap[tid].end(); ++it)
           mr->reduce(tid, it->first, it->second);
@@ -210,21 +211,23 @@ void* doInMemoryReduce(void* arg) {
     InMemoryReductionState<KeyType, ValueType> state = writer.initiateInMemoryReduce(tid); 
 
     InMemoryContainer<KeyType, ValueType> record;
-#ifdef USE_GOMR
+/*#ifdef USE_GOMR
     InMemoryContainer<KeyType, ValueType> refineMap;
 #endif
-
+*/
     while(writer.getNextMinKey(&state, &record)) {
 #ifdef USE_GOMR
-      refineMap[record.begin()->first] = record.begin()->second;
+      //refineMap[record.begin()->first] = record.begin()->second;
+      writer.readBufMap[tid][record.begin()->first] = record.begin()->second;
 #else
       mr->reduce(tid, record.begin()->first, record.begin()->second);
 #endif
       record.clear();
     }
 #ifdef USE_GOMR
-      fprintf(stderr,"\nMR TID: %d Inner While Don: %d, refinemap: %d **********", tid, don, refineMap.size());
-    mr->reduce(tid, refineMap);
+      fprintf(stderr,"\nMR TID: %d Inner While Don: %d, readmap: %d **********", tid, don, writer.readBufMap[tid].size());
+   // mr->reduce(tid, refineMap);
+    mr->reduce(tid, writer.readBufMap[tid]);
 #endif
 
     mr->updateReduceIter(tid);
@@ -263,6 +266,8 @@ end_read.resize(nMappers, 0);
   infinimem_read_times.resize(nReducers, 0.0);
   infinimem_write_times.resize(nMappers, 0.0);
   localCombinedPairs.resize(nMappers, uint64_t(0));
+  infinimem_cread_times.resize(nReducers, 0.0);
+  infinimem_cwrite_times.resize(nReducers, 0.0);
 
   init_time += getTimer();
 
@@ -289,7 +294,7 @@ end_read.resize(nMappers, 0);
 
   fprintf(stderr, "--------------------------------------\n");
 
-  //writer.shutdown();
+  writer.shutdown();
 
   std::cout << "------- Final Time ---------" << std::endl;
   std::cout << " Init time : " << init_time << " (msec)" << std::endl;
@@ -315,6 +320,13 @@ end_read.resize(nMappers, 0);
   std::cout << " InfiniMem Read time: " << *infinimem_read_time << " (msec)" << std::endl;
   auto infinimem_write_time = max_element(std::begin(infinimem_write_times), std::end(infinimem_write_times));
   std::cout << " InfiniMem Write time: " << *infinimem_write_time << " (msec)" << std::endl;
+  
+  auto infinimem_cread_time = max_element(std::begin(infinimem_cread_times), std::end(infinimem_cread_times));
+  std::cout << " InfiniMem Sequential Read time: " << *infinimem_cread_time << " (msec)" << std::endl;
+
+  auto infinimem_cwrite_time = max_element(std::begin(infinimem_cwrite_times), std::end(infinimem_cwrite_times));
+  std::cout << " InfiniMem Sequential Write time: " << *infinimem_cwrite_time << " (msec)" << std::endl;
+
 
   std::cout << std::endl;
 }
@@ -397,6 +409,12 @@ bool MapReduce<KeyType, ValueType>::read(const unsigned tid) {
 template <typename KeyType, typename ValueType>
 void MapReduce<KeyType, ValueType>::cWrite(const unsigned tid) {
   writer.cWrite(tid);
+}
+
+//--------------------------------------------
+template <typename KeyType, typename ValueType>
+InMemoryContainer<KeyType, ValueType>& MapReduce<KeyType, ValueType>::cRead(const unsigned tid) {
+  return writer.cRead(tid);
 }
 
 //--------------------------------------------
