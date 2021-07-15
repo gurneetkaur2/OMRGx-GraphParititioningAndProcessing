@@ -50,8 +50,8 @@ class Go : public MapReduce<KeyType, ValueType>
   std::map<unsigned, unsigned>* dTable;
   std::map<unsigned, unsigned >* bndIndMap; // TODO:move its declaration here to make it thread local
   // std::map<unsigned, unsigned > refineMap;  // to store the vertices from all partitions to be refined with each other 
-  std::vector<unsigned>* where; // = (nvertices, -1);
-  std::vector<unsigned> gWhere; // = (nvertices, -1);
+  std::vector<unsigned long>* where; // = (nvertices, -1);
+  std::vector<unsigned long> gWhere; // = (nvertices, -1);
   std::vector<bool>* pIdsCompleted;
   std::vector<unsigned>* markMax;
   std::vector<unsigned>* markMin;
@@ -63,7 +63,7 @@ class Go : public MapReduce<KeyType, ValueType>
   public:
 
   void* beforeMap(const unsigned tid) {
-    where = new std::vector<unsigned>[nReducers]; // nReducers cause problem here
+    where = new std::vector<unsigned long>[nReducers]; // nReducers cause problem here
     //next = new std::vector<double>[nmappers];
     fprintf(stderr, "TID: %d, nvert:  %d \n", tid, nvertices);
     for (unsigned i = 0; i<=nvertices; ++i) {
@@ -136,17 +136,18 @@ class Go : public MapReduce<KeyType, ValueType>
   void* beforeReduce(const unsigned tid) {
     //  unsigned int iters = 0;
     //copy local partition ids to gWhere
-  //  fprintf(stderr, "\nTID: %d,BEFORE Reducing values \n", tid);
+ //   fprintf(stderr, "\nTID: %d,BEFORE Reducing values \n", tid);
     if(tid ==0){
       this->gCopy(tid, gWhere);
-      this->initRefineStructs();
     }
 
+   // fprintf(stderr, "\nTID: %d,BEFORE RefineINIT \n", tid);
     refineInit(tid);
   }
 
 //--------------------------------------------------
 void refineInit(const unsigned tid) {
+    //fprintf(stderr, "\nTID: %d,INSIDE RefineINIT \n", tid);
     for (unsigned i = 0; i < nReducers; i++) {
           fetchPIds[tid].insert(i);  //partition ids - 0,1,2 .. 
           pIdsCompleted[tid].push_back(false);
@@ -166,7 +167,7 @@ void refineInit(const unsigned tid) {
     //countThreadWords += std::accumulate(values.begin(), values.end(), 0);
     long double sum = 0.0;
     // iterate each vertex neighbor in adjlist
-    //fprintf(stderr, "\nTID: %d, Reducing values fetchPID Size: %d", tid, fetchPIds[tid].size());
+  //  fprintf(stderr, "\nTID: %d, Reducing values fetchPID Size: %d", tid, fetchPIds[tid].size());
     unsigned hipart = tid;
     // unsigned whereMax;
     for(auto it = fetchPIds[tid].begin(); it != fetchPIds[tid].end(); ++it) { 
@@ -190,9 +191,9 @@ void refineInit(const unsigned tid) {
 //      fprintf(stderr, "\nFINAL TID: %d, WHEREMAX: %d ", tid, whereMax);
       bool ret = this->checkPIDStarted(tid, hipart, whereMax);
 //      fprintf(stderr, "\nTID: %d, refining with: %d, ret: %d ", tid, whereMax, ret);
-      ComputeBECut(tid, gWhere, bndIndMap[tid], container);
+      //ComputeBECut(tid, gWhere, bndIndMap[tid], container);
       // wait for other threads to compute edgecuts before calculating dvalues values
-//      fprintf(stderr, "\nTID: %d, Before BarEDGECUTS ", tid);
+     // fprintf(stderr, "\nTID: %d, Before BarEDGECUTS ", tid);
       pthread_barrier_wait(&(barEdgeCuts)); 
 
       fprintf(stderr, "\nTID: %d, Computing Gain  Container: %d", tid, container.size());
@@ -227,7 +228,7 @@ void refineInit(const unsigned tid) {
         //  pthread_mutex_unlock(&locks[tid]);
         }
       }
-  //    fprintf(stderr, "\nTID: %d, Before BarWriteInfo ", tid);
+     // fprintf(stderr, "\nTID: %d, Before BarWriteInfo ", tid);
     // pthread_barrier_wait(&(barWriteInfo));
     //  fprintf(stderr, "\nTID: %d BEFORE pIdsCompleted[%d][%d]: %d ", tid, hipart, whereMax, pIdsCompleted[hipart][whereMax]);
  //TODO: This should be set true after the entire iteration is complete-- problem addressed below by clear()
@@ -245,7 +246,7 @@ void refineInit(const unsigned tid) {
 
   void* updateReduceIter(const unsigned tid) {
 
-      //fprintf(stderr, "\nTID: %d, UPDATE reduce ITer ", tid);
+      fprintf(stderr, "\nTID: %d, UPDATE reduce ITer ", tid);
       pthread_barrier_wait(&(barCompute));
 
       refineInit(tid);
@@ -340,10 +341,10 @@ void refineInit(const unsigned tid) {
 //   }
 }
   //---------------
-  void ComputeBECut(const unsigned tid, const std::vector<unsigned>& where, InMemTable& bndind, const InMemoryContainer<KeyType, ValueType>& inMemMap) {
+  void ComputeBECut(const unsigned tid, const std::vector<unsigned long>& where, InMemTable& bndind, const InMemoryContainer<KeyType, ValueType>& inMemMap) {
     IdType src;
     std::vector<unsigned> bndvert;
-      fprintf(stderr, "\nTID: %d, Computing EdgeCuts ", tid);
+      fprintf(stderr, "\nTID: %d, Computing EdgeCuts COntainer Size: %d ", tid, inMemMap.size());
 
     for (InMemoryContainerConstIterator<KeyType, ValueType> it = inMemMap.begin(); it != inMemMap.end(); ++it) {
       src = it->first;
@@ -373,6 +374,7 @@ void refineInit(const unsigned tid) {
       dTable[tid][src] = dsrc; 
     } //end Compute edgecuts main Loop
     //   pthread_barrier_wait(&(barCompute)); //wait for the dvalues from all the threads to be populated
+      fprintf(stderr, "\nTID: %d,Finished Computing EdgeCuts ****** ", tid);
   }
 
   //---------------
@@ -516,7 +518,7 @@ void refineInit(const unsigned tid) {
                 }
 
 //-----------------------------------
-                void gCopy(const unsigned tid, std::vector<unsigned>& gWhere){
+                void gCopy(const unsigned tid, std::vector<unsigned long>& gWhere){
                   bool first = 1;
                   for(unsigned i=0; i<nReducers; ++i){
                     for(unsigned j=0; j<=nvertices; ++j){
@@ -529,7 +531,7 @@ void refineInit(const unsigned tid) {
                           gWhere[j] = where[i][j];
                         }
                       }
-                      //       fprintf(stderr,"\nGWHERE[%d]: %d", j, gWhere[j]);
+                //             fprintf(stderr,"\nGWHERE[%d]: %d", j, gWhere[j]);
                     }
                     first = 0;
                   }
@@ -635,6 +637,7 @@ void refineInit(const unsigned tid) {
     pthread_barrier_init(&barAfterRefine, NULL, nReducers);
               go.init(folderpath, gb, nmappers, nReducers, nvertices, batchSize, kitems, npartitions);
 
+              go.initRefineStructs();
               double runTime = -getTimer();
               go.run(); 
               runTime += getTimer();
