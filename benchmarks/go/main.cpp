@@ -63,7 +63,6 @@ class Go : public MapReduce<KeyType, ValueType>
   public:
 
   void* beforeMap(const unsigned tid) {
-    where = new std::vector<unsigned long>[nReducers]; // nReducers cause problem here
     //next = new std::vector<double>[nmappers];
     fprintf(stderr, "TID: %d, nvert:  %d \n", tid, nvertices);
     for (unsigned i = 0; i<=nvertices; ++i) {
@@ -75,7 +74,7 @@ class Go : public MapReduce<KeyType, ValueType>
       }
     }
     //  fprintf(stderr, "\n TID: %d, BEFORE key: %d prev: %f next: %f rank: %.2f \n", tid, i, prev[tid][i], next[tid][i], (1/nvertices));
-    // fprintf(stderr, "TID: %d, After assigning init values \n", tid);
+     //fprintf(stderr, "TID: %d, After assigning init values \n", tid);
     return NULL;
   }
   //void* map(const unsigned tid, const unsigned fileId, const std::string& input)
@@ -122,6 +121,7 @@ class Go : public MapReduce<KeyType, ValueType>
       //refineMap[i] = 0;
     }
     //initialize the data structures required in refinement phase
+    where = new std::vector<unsigned long>[nReducers]; // nReducers cause problem here
     fetchPIds = new std::set<unsigned>[nReducers];
     dTable = new std::map<unsigned, unsigned>[nReducers];
     bndIndMap = new std::map<unsigned, unsigned >[nReducers]; // TODO:move its declaration here to make it thread local
@@ -136,7 +136,7 @@ class Go : public MapReduce<KeyType, ValueType>
   void* beforeReduce(const unsigned tid) {
     //  unsigned int iters = 0;
     //copy local partition ids to gWhere
- //   fprintf(stderr, "\nTID: %d,BEFORE Reducing values \n", tid);
+    fprintf(stderr, "\nTID: %d,BEFORE Reducing values \n", tid);
     if(tid ==0){
       this->gCopy(tid, gWhere);
     }
@@ -173,7 +173,7 @@ void refineInit(const unsigned tid) {
     for(auto it = fetchPIds[tid].begin(); it != fetchPIds[tid].end(); ++it) { 
     //for(auto wherei=0; wherei < nReducers; wherei++){ //start TID loop
       unsigned whereMax = *it; 
-      fprintf(stderr, "\nTID: %d, WHEREMAX: %d ", tid, whereMax);
+     // fprintf(stderr, "\nTID: %d, WHEREMAX: %d ", tid, whereMax);
       if(whereMax == tid){
 //      fprintf(stderr, "\nTID: %d pIdsCompleted[%d][%d]: %d ", tid, hipart, whereMax, pIdsCompleted[hipart][whereMax]);
         //pIdsCompleted[tid][*it] = true;
