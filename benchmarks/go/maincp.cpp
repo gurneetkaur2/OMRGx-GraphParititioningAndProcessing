@@ -247,7 +247,7 @@ void refineInit(const unsigned tid) {
 
   void* updateReduceIter(const unsigned tid) {
 
-     // fprintf(stderr, "\nTID: %d, UPDATE reduce ITer ", tid);
+      fprintf(stderr, "\nTID: %d, UPDATE reduce ITer ", tid);
       pthread_barrier_wait(&(barCompute));
 
       refineInit(tid);
@@ -345,7 +345,7 @@ void refineInit(const unsigned tid) {
   void ComputeBECut(const unsigned tid, const std::vector<unsigned long>& where, InMemTable& bndind, const InMemoryContainer<KeyType, ValueType>& inMemMap) {
     IdType src;
     std::vector<unsigned> bndvert;
-      //fprintf(stderr, "\nTID: %d, Computing EdgeCuts COntainer Size: %d ", tid, inMemMap.size());
+      fprintf(stderr, "\nTID: %d, Computing EdgeCuts COntainer Size: %d ", tid, inMemMap.size());
 
     for (InMemoryContainerConstIterator<KeyType, ValueType> it = inMemMap.begin(); it != inMemMap.end(); ++it) {
       src = it->first;
@@ -375,7 +375,7 @@ void refineInit(const unsigned tid) {
       dTable[tid][src] = dsrc; 
     } //end Compute edgecuts main Loop
     //   pthread_barrier_wait(&(barCompute)); //wait for the dvalues from all the threads to be populated
-     // fprintf(stderr, "\nTID: %d,Finished Computing EdgeCuts ****** ", tid);
+      fprintf(stderr, "\nTID: %d,Finished Computing EdgeCuts ****** ", tid);
   }
 
   //---------------
