@@ -61,12 +61,12 @@ unsigned lineId = tid*mr->linesPerThread + tid ;//0, 4, 8
                                       }
     }
 
+ //fprintf(stderr,"\n ********** TID: %d, lineID %d, end_read: %d \n", tid, lineId+1, mr->end_read[tid]);
   while(std::getline(infile, line, '\n')){
-    //fprintf(stderr,"\nTID: %d, lineID %d THREADCT %d\n", tid, lineId, threadCt);
-// fprintf(stderr,"\n ********** TID: %d, lineID %d, end_read: %d \n", tid, lineId+1, mr->end_read[tid]);
    // fprintf(stderr,"\n ********** TID: %d, lineID %d \n", tid, lineId+1);
     if( lineId < mr->nVertices && lineId <= mr->end_read[tid]){
-      mr->map(tid, line, ++lineId);     
+      unsigned nbufferId = mr->setPartitionId(tid);
+      mr->map(tid, line, ++lineId, nbufferId);     
     }                                                                                                           else
       break;
   }
@@ -126,7 +126,7 @@ void* doReduce(void* arg)
 
     while(true) {
       bool execLoop = mr->read(tid);
-      fprintf(stderr,"\nMR TID: %d Inner While Don: %d, ExecL: %d **********", tid, don, execLoop);
+      //fprintf(stderr,"\nMR TID: %d Inner While Don: %d, ExecL: %d **********", tid, don, execLoop);
       if(execLoop == false) {
 #ifdef USE_GOMR
         mr->reduce(tid, writer.readBufMap[tid]);
@@ -180,7 +180,7 @@ void* doReduce(void* arg)
     writer.readClear(tid);
     mr->updateReduceIter(tid);
   }
-  fprintf(stderr, "thread %u OUT of LOOPS\n", tid);
+  //fprintf(stderr, "thread %u OUT of LOOPS\n", tid);
   mr->afterReduce(tid);
 
   time_reduce += getTimer();
@@ -225,7 +225,7 @@ void* doInMemoryReduce(void* arg) {
       record.clear();
     }
 #ifdef USE_GOMR
-      fprintf(stderr,"\nMR TID: %d Inner While Don: %d, readmap: %d **********", tid, don, writer.readBufMap[tid].size());
+  //    fprintf(stderr,"\nMR TID: %d Inner While Don: %d, readmap: %d **********", tid, don, writer.readBufMap[tid].size());
    // mr->reduce(tid, refineMap);
     mr->reduce(tid, writer.readBufMap[tid]);
 #endif
@@ -386,10 +386,31 @@ void MapReduce<KeyType, ValueType>::init(const std::string input, const unsigned
 }
 
 //--------------------------------------------  GK
-  template <typename KeyType, typename ValueType>
-void MapReduce<KeyType, ValueType>::writeBuf(const unsigned tid, const KeyType& key, const ValueType& value)
+/*  template <typename KeyType, typename ValueType>
+int MapReduce<KeyType, ValueType>::setPartitionId(const unsigned tid)
 {
-  writer.writeBuf(tid, key, value);
+  return setPartitionId(tid);
+}
+*/
+//--------------------------------------------  GK
+  template <typename KeyType, typename ValueType>
+int MapReduce<KeyType, ValueType>::getRows()
+{
+  return nMappers;
+}
+
+//--------------------------------------------  GK
+  template <typename KeyType, typename ValueType>
+int MapReduce<KeyType, ValueType>::getCols()
+{
+  return nReducers;
+}
+
+//--------------------------------------------  GK
+  template <typename KeyType, typename ValueType>
+void MapReduce<KeyType, ValueType>::writeBuf(const unsigned tid, const KeyType& key, const ValueType& value, const unsigned nbufferId)
+{
+  writer.writeBuf(tid, key, value, nbufferId);
 }
 
 //--------------------------------------------

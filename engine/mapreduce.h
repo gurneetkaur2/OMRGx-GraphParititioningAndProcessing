@@ -34,7 +34,11 @@ class MapReduce
     // TODO: Setup timers
     virtual void* beforeMap(const unsigned tid) { };
     //virtual void* map(const unsigned tid, const unsigned fileId, const std::string& input) = 0;
+ #ifdef USE_GOMR  
+    virtual void* map(const unsigned tid, const std::string& input, const unsigned lineId, const unsigned nbufferId) = 0;
+ #else
     virtual void* map(const unsigned tid, const std::string& input, const unsigned lineId) = 0;
+ #endif
     virtual void* afterMap(const unsigned tid) { };
     virtual void* beforeReduce(const unsigned tid) { };
  #ifdef USE_GOMR  
@@ -44,9 +48,10 @@ class MapReduce
  #endif
     virtual void* updateReduceIter(const unsigned tid) { };
     virtual void* afterReduce(const unsigned tid) { };
+    virtual unsigned setPartitionId(const unsigned tid) { };
     //virtual void* readAfterReduce(const unsigned tid, const InMemoryContainer<KeyType, ValueType>& container) { };
-    virtual void* readAfterReduce(const unsigned tid) { };
-    virtual void* writeAfterReduce(const unsigned tid, const InMemoryContainer<KeyType, ValueType>& container) { };
+//    virtual void* readAfterReduce(const unsigned tid) { };
+ //   virtual void* writeAfterReduce(const unsigned tid, const InMemoryContainer<KeyType, ValueType>& container) { };
      
     // System provided default; overridable by user
     virtual void run();
@@ -57,8 +62,11 @@ class MapReduce
     void setkItems(const unsigned kBItems);     //GK
     void setGB(const unsigned g);
   */
+    int getRows();
+    int getCols();
+    int getPartitionId(const unsigned tid);
     void init(const std::string input, const unsigned g, const unsigned mappers, const unsigned reducers, const unsigned vertices, const unsigned bSize, const unsigned kItems, const unsigned iterations);
-    void writeBuf(const unsigned tid, const KeyType& key, const ValueType& value);  //GK
+    void writeBuf(const unsigned tid, const KeyType& key, const ValueType& value, const unsigned nbufferId);  //GK
     //bool read(const unsigned tid, MapBuffer<KeyType, ValueType>& container, std::vector<int>& keysPerBatch, MapBuffer<KeyType, unsigned>& lookUpTable, std::queue<int>& fetchBatchIds);  //GK
     bool read(const unsigned tid);
     void readInit(const unsigned buffer);
@@ -75,6 +83,7 @@ void partitionInputForParallelReads();
 
     // Variables. Ideally, make these private and provide getters/setters.
     unsigned nVertices;
+    //unsigned nbufferId;
     unsigned nIterations;
     unsigned nMappers;
     unsigned nReducers;

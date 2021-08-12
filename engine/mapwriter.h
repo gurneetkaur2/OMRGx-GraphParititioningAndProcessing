@@ -61,7 +61,7 @@ class MapWriter
   public:
     void initBuf(unsigned nMappers, unsigned nReducers, unsigned nVertices, unsigned bSize, unsigned kItems);
     void writeInit();
-    void writeBuf(const unsigned tid, const KeyType& key, const ValueType& value); //GK
+    void writeBuf(const unsigned tid, const KeyType& key, const ValueType& value, const unsigned nbufferId); //GK
     void flushMapResidues(const unsigned tid);
 
     unsigned long long merge(InMemoryContainer<KeyType, ValueType>& toMap, unsigned whichMap, unsigned tid, InMemoryContainerIterator<KeyType, ValueType>& begin, InMemoryContainerConstIterator<KeyType, ValueType> end);
@@ -107,6 +107,7 @@ class MapWriter
     unsigned nCols;
     unsigned batchSize;  //GK
     unsigned kBItems;  //GK
+    //unsigned bufferId;
     bool firstInit;
     //IdType* cTotalKeys; //GK
     IdType* nItems; //GK

@@ -64,7 +64,7 @@ class Go : public MapReduce<KeyType, ValueType>
 
   void* beforeMap(const unsigned tid) {
     //next = new std::vector<double>[nmappers];
-    unsigned part = tid % nReducers;
+    unsigned part = tid % this->getCols();
     fprintf(stderr, "TID: %d, nvert:  %d, part: %d \n", tid, nvertices, part);
     for (unsigned i = 0; i<=nvertices; ++i) {
       // fprintf(stderr, "TID: %d, Inside where i: %d \n", tid, i);
@@ -78,8 +78,17 @@ class Go : public MapReduce<KeyType, ValueType>
      //fprintf(stderr, "TID: %d, After assigning init values \n", tid);
     return NULL;
   }
+
+unsigned setPartitionId(const unsigned tid)
+  {
+     unsigned nCols = this->getCols();
+     //fprintf(stderr,"\nTID: %d writing to partition: %d " , tid, tid % nCols);
+     return tid % nCols;
+  }
+
+
   //void* map(const unsigned tid, const unsigned fileId, const std::string& input)
-  void* map(const unsigned tid, const std::string& input, const unsigned lineId)
+  void* map(const unsigned tid, const std::string& input, const unsigned lineId, const unsigned nbufferId)
   {
     //    fprintf(stderr, "TID: %d,Inside Map \n", tid);
     //pthread_barrier_wait(&(barClear));
@@ -105,7 +114,7 @@ class Go : public MapReduce<KeyType, ValueType>
         where[part].at(from[i]) = whereFrom; // partition ID of where 'from' will go
 
       //this->writeBuf(tid, to, from[i]);
-      this->writeBuf(tid, lineId, from[i]);
+      this->writeBuf(tid, lineId, from[i], nbufferId);
     }
 
     return NULL;
@@ -177,7 +186,7 @@ void refineInit(const unsigned tid) {
      // fprintf(stderr, "\nTID: %d, WHEREMAX: %d ", tid, whereMax);
       if(whereMax == tid){
 //      fprintf(stderr, "\nTID: %d pIdsCompleted[%d][%d]: %d ", tid, hipart, whereMax, pIdsCompleted[hipart][whereMax]);
-        //pIdsCompleted[tid][*it] = true;
+        pIdsCompleted[tid][*it] = true;
   //    fprintf(stderr, "\nTID: %d going to NEXT Iter", tid);
         continue;
       }
@@ -323,7 +332,7 @@ void refineInit(const unsigned tid) {
   }
 
   //---------------
-  void* readAfterReduce(const unsigned tid) {
+  void readAfterReduce(const unsigned tid) {
    // this->cRead(tid);
    don = false;
 // fprintf(stderr,"\nTID: %d COmputeEC TotalPECUTs: %d ", tid, totalPECuts[tid]);
@@ -336,7 +345,7 @@ void refineInit(const unsigned tid) {
 }
 
   //---------------
-  void* writeAfterReduce(const unsigned tid, const InMemoryContainer<KeyType, ValueType>& container) {
+  void writeAfterReduce(const unsigned tid, const InMemoryContainer<KeyType, ValueType>& container) {
    this->cWrite(tid); // container.size(), container.end());	
    //return container; 
 //   }

@@ -136,10 +136,14 @@ void MapWriter<KeyType, ValueType>::writeInit() {
 // Write the Map output to in-memory Buffer
 // Gets Hashing function from Application Programmer
 template <typename KeyType, typename ValueType>
-void MapWriter<KeyType, ValueType>::writeBuf(const unsigned tid, const KeyType& key, const ValueType& value) {
+void MapWriter<KeyType, ValueType>::writeBuf(const unsigned tid, const KeyType& key, const ValueType& value, const unsigned nbufferId) {
   double timeWBF = -getTimer();
   //unsigned bufferId = (tolower(word[0]) - 'a') % nCols; // values 0, 1, 2 at most = numThreads
-  unsigned bufferId = hashKey(key) % nCols; // values 0, 1, 2 at most = numThreads
+  //unsigned bufferId = hashKey(key) % nCols; // values 0, 1, 2 at most = numThreads
+ // int bufferId = -1;
+ unsigned bufferId = nbufferId;
+  if(bufferId == -1)
+    bufferId = hashKey(key) % nCols;
   unsigned buffer = tid * nCols + bufferId;  // calculate the actual buffer to write in
 
 /*#ifdef USE_GOMR
