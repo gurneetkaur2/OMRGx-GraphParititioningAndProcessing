@@ -33,9 +33,9 @@ class MapReduce
     //       and also helps with write(), read() and sort() etc.
     // TODO: Setup timers
     virtual void* beforeMap(const unsigned tid) { };
-    //virtual void* map(const unsigned tid, const unsigned fileId, const std::string& input) = 0;
  #ifdef USE_GOMR  
-    virtual void* map(const unsigned tid, const std::string& input, const unsigned lineId, const unsigned nbufferId) = 0;
+    //virtual void* map(const unsigned tid, const std::string& input, const unsigned lineId, const unsigned nbufferId, const unsigned hiDegree) = 0;
+    virtual void* map(const unsigned tid, const unsigned fileId, const std::string& input, const unsigned nbufferId, const unsigned hiDegree) = 0;
  #else
     virtual void* map(const unsigned tid, const std::string& input, const unsigned lineId) = 0;
  #endif
@@ -65,8 +65,12 @@ class MapReduce
     int getRows();
     int getCols();
     int getPartitionId(const unsigned tid);
-    void init(const std::string input, const unsigned g, const unsigned mappers, const unsigned reducers, const unsigned vertices, const unsigned bSize, const unsigned kItems, const unsigned iterations);
-    void writeBuf(const unsigned tid, const KeyType& key, const ValueType& value, const unsigned nbufferId);  //GK
+// #ifdef USE_GOMR  
+    void init(const std::string input, const unsigned g, const unsigned mappers, const unsigned reducers, const unsigned vertices, const unsigned hidegree, const unsigned bSize, const unsigned kItems, const unsigned iterations);
+// #else
+  //   void init(const std::string input, const unsigned g, const unsigned mappers, const unsigned reducers, const unsigned vertices, const unsigned bSize, const unsigned kItems, const unsigned iterations);
+// #endif
+    void writeBuf(const unsigned tid, const KeyType& key, const ValueType& value, const unsigned nbufferId, const unsigned hidegree);  //GK
     //bool read(const unsigned tid, MapBuffer<KeyType, ValueType>& container, std::vector<int>& keysPerBatch, MapBuffer<KeyType, unsigned>& lookUpTable, std::queue<int>& fetchBatchIds);  //GK
     bool read(const unsigned tid);
     void readInit(const unsigned buffer);
@@ -83,6 +87,7 @@ void partitionInputForParallelReads();
 
     // Variables. Ideally, make these private and provide getters/setters.
     unsigned nVertices;
+    unsigned hiDegree;
     //unsigned nbufferId;
     unsigned nIterations;
     unsigned nMappers;

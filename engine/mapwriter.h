@@ -55,13 +55,14 @@ class InMemoryReductionState {
   InMemoryReductionState(unsigned size) : begins(size), ends(size) { }
 };
 
+__thread unsigned pid = 0; // use for cyclic distribution
 template <typename KeyType, typename ValueType>
 class MapWriter
 {
   public:
-    void initBuf(unsigned nMappers, unsigned nReducers, unsigned nVertices, unsigned bSize, unsigned kItems);
+    void initBuf(unsigned nMappers, unsigned nReducers, unsigned nVertices, unsigned hiDegree, unsigned bSize, unsigned kItems);
     void writeInit();
-    void writeBuf(const unsigned tid, const KeyType& key, const ValueType& value, const unsigned nbufferId); //GK
+    void writeBuf(const unsigned tid, const KeyType& key, const ValueType& value, const unsigned nbufferId, const unsigned hidegree); //GK
     void flushMapResidues(const unsigned tid);
 
     unsigned long long merge(InMemoryContainer<KeyType, ValueType>& toMap, unsigned whichMap, unsigned tid, InMemoryContainerIterator<KeyType, ValueType>& begin, InMemoryContainerConstIterator<KeyType, ValueType> end);
@@ -103,6 +104,7 @@ class MapWriter
     bool read(const unsigned tid, InMemoryContainer<KeyType, ValueType>& readBufMap, std::vector<unsigned>& keysPerBatch, LookUpTable<KeyType>& lookUpTable, std::set<unsigned>& fetchBatchIds, std::vector<unsigned long long>& readNextInBatch, std::vector<bool>& batchesCompleted);
     
     unsigned nVtces;
+    unsigned hiDegree;
     unsigned nRows;
     unsigned nCols;
     unsigned batchSize;  //GK

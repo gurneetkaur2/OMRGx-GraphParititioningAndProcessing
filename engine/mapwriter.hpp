@@ -19,11 +19,12 @@
 //------------------------------------------------- GK
 // Initialize in-memory Buffers
   template <typename KeyType, typename ValueType>
-void MapWriter<KeyType, ValueType>::initBuf(unsigned nMappers, unsigned nReducers, unsigned nVertices, unsigned bSize, unsigned kItems)
+void MapWriter<KeyType, ValueType>::initBuf(unsigned nMappers, unsigned nReducers, unsigned nVertices, unsigned hidegree, unsigned bSize, unsigned kItems)
 {
   //nBuffers = pow(buffers, 2); // number of buffers is square of number of threads
   //nBuffers = nMappers * nReducers;
   nVtces = nVertices;
+  hiDegree = hidegree;
   nRows = nMappers;
   nCols = nReducers;
   writtenToDisk = false;
@@ -136,7 +137,7 @@ void MapWriter<KeyType, ValueType>::writeInit() {
 // Write the Map output to in-memory Buffer
 // Gets Hashing function from Application Programmer
 template <typename KeyType, typename ValueType>
-void MapWriter<KeyType, ValueType>::writeBuf(const unsigned tid, const KeyType& key, const ValueType& value, const unsigned nbufferId) {
+void MapWriter<KeyType, ValueType>::writeBuf(const unsigned tid, const KeyType& key, const ValueType& value, const unsigned nbufferId, const unsigned hidegree) {
   double timeWBF = -getTimer();
   //unsigned bufferId = (tolower(word[0]) - 'a') % nCols; // values 0, 1, 2 at most = numThreads
   //unsigned bufferId = hashKey(key) % nCols; // values 0, 1, 2 at most = numThreads
@@ -145,6 +146,11 @@ void MapWriter<KeyType, ValueType>::writeBuf(const unsigned tid, const KeyType& 
   if(bufferId == -1)
     bufferId = hashKey(key) % nCols;
   unsigned buffer = tid * nCols + bufferId;  // calculate the actual buffer to write in
+
+  if(hidegree != 0){
+    bufferId = pid++ % nCols;
+    unsigned buffer = tid * nCols + bufferId;  // calculate the actual buffer to write in 
+  }
 
 /*#ifdef USE_GOMR
   if (nVtces > 0 ){

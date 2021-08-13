@@ -15,6 +15,8 @@
 #include <ctime>
 #include <cstdlib>
 
+//NOTE: input file must be numbered for Graphs when using fileIds
+
 static int nvertices;
 static int nmappers;
 static int nReducers;
@@ -75,7 +77,7 @@ class Go : public MapReduce<KeyType, ValueType>
       }
     }
     //  fprintf(stderr, "\n TID: %d, BEFORE key: %d prev: %f next: %f rank: %.2f \n", tid, i, prev[tid][i], next[tid][i], (1/nvertices));
-     //fprintf(stderr, "TID: %d, After assigning init values \n", tid);
+     fprintf(stderr, "TID: %d, After assigning init values \n", tid);
     return NULL;
   }
 
@@ -83,12 +85,12 @@ unsigned setPartitionId(const unsigned tid)
   {
      unsigned nCols = this->getCols();
      //fprintf(stderr,"\nTID: %d writing to partition: %d " , tid, tid % nCols);
-     return tid % nCols;
+     return -1; //tid % nCols;
   }
 
 
-  //void* map(const unsigned tid, const unsigned fileId, const std::string& input)
-  void* map(const unsigned tid, const std::string& input, const unsigned lineId, const unsigned nbufferId)
+  void* map(const unsigned tid, const unsigned fileId, const std::string& input, const unsigned nbufferId, const unsigned hiDegree)
+  //void* map(const unsigned tid, const std::string& input, const unsigned lineId, const unsigned nbufferId)
   {
     //    fprintf(stderr, "TID: %d,Inside Map \n", tid);
     //pthread_barrier_wait(&(barClear));
@@ -96,7 +98,7 @@ unsigned setPartitionId(const unsigned tid)
     unsigned to, token;
     std::vector<unsigned> from;
 
-    //inputStream >> to;
+    inputStream >> to;
     while(inputStream >> token){
       from.push_back(token);
     }
@@ -108,14 +110,20 @@ unsigned setPartitionId(const unsigned tid)
       where[part].at(to) = bufferId;
 
     for(unsigned i = 0; i < from.size(); ++i){
-   //                  fprintf(stderr,"\nVID: %d FROM: %zu size: %zu", lineId, from[i], from.size());
+                     fprintf(stderr,"\nVID: %d FROM: %zu size: %zu", to, from[i], from.size());
       unsigned whereFrom = hashKey(from[i]) % nReducers;
       if(where[part].at(from[i]) == INIT_VAL)
         where[part].at(from[i]) = whereFrom; // partition ID of where 'from' will go
 
-      //this->writeBuf(tid, to, from[i]);
-      this->writeBuf(tid, lineId, from[i], nbufferId);
-    }
+      if (from.size() < hiDegree){
+      this->writeBuf(tid, to, from[i], nbufferId, 0);
+
+      }
+      else{
+        this->writeBuf(tid, to, from[i], nbufferId, from.size());
+     // this->writeBuf(tid, lineId, from[i], nbufferId);
+      }
+     }
 
     return NULL;
   }
@@ -146,7 +154,7 @@ unsigned setPartitionId(const unsigned tid)
   void* beforeReduce(const unsigned tid) {
     //  unsigned int iters = 0;
     //copy local partition ids to gWhere
-    fprintf(stderr, "\nTID: %d,BEFORE Reducing values \n", tid);
+   // fprintf(stderr, "\nTID: %d,BEFORE Reducing values \n", tid);
     if(tid ==0){
       this->gCopy(tid, gWhere);
     }
@@ -157,7 +165,7 @@ unsigned setPartitionId(const unsigned tid)
 
 //--------------------------------------------------
 void refineInit(const unsigned tid) {
-    //fprintf(stderr, "\nTID: %d,INSIDE RefineINIT \n", tid);
+   // fprintf(stderr, "\nTID: %d,INSIDE RefineINIT \n", tid);
     for (unsigned i = 0; i < nReducers; i++) {
           fetchPIds[tid].insert(i);  //partition ids - 0,1,2 .. 
           pIdsCompleted[tid].push_back(false);
@@ -177,7 +185,7 @@ void refineInit(const unsigned tid) {
     //countThreadWords += std::accumulate(values.begin(), values.end(), 0);
     long double sum = 0.0;
     // iterate each vertex neighbor in adjlist
-  //  fprintf(stderr, "\nTID: %d, Reducing values fetchPID Size: %d", tid, fetchPIds[tid].size());
+   // fprintf(stderr, "\nTID: %d, Reducing values Container Size: %d", tid, container.size());
     unsigned hipart = tid;
     // unsigned whereMax;
     for(auto it = fetchPIds[tid].begin(); it != fetchPIds[tid].end(); ++it) { 
@@ -198,15 +206,15 @@ void refineInit(const unsigned tid) {
           pIdsCompleted[tid][*it] = true;
           continue;
       }
-//      fprintf(stderr, "\nFINAL TID: %d, WHEREMAX: %d ", tid, whereMax);
+   // fprintf(stderr, "\nFINAL TID: %d, WHEREMAX: %d ", tid, whereMax);
       bool ret = this->checkPIDStarted(tid, hipart, whereMax);
 //      fprintf(stderr, "\nTID: %d, refining with: %d, ret: %d ", tid, whereMax, ret);
-      //ComputeBECut(tid, gWhere, bndIndMap[tid], container);
+      ComputeBECut(tid, gWhere, bndIndMap[tid], container);
       // wait for other threads to compute edgecuts before calculating dvalues values
-     // fprintf(stderr, "\nTID: %d, Before BarEDGECUTS ", tid);
+    // fprintf(stderr, "\nTID: %d, Before BarEDGECUTS ", tid);
       pthread_barrier_wait(&(barEdgeCuts)); 
 
-      //fprintf(stderr, "\nTID: %d, Computing Gain  Container: %d", tid, container.size());
+      fprintf(stderr, "\nTID: %d, Computing Gain  Container: %d", tid, container.size());
       if(ret == true){
         int maxG = -1;     
         do{
@@ -215,10 +223,10 @@ void refineInit(const unsigned tid) {
         } while(maxG > 0);  //end do
       } // end if ret
 
-   //   pthread_barrier_wait(&(barCompute)); 
+      pthread_barrier_wait(&(barClear)); 
       if(ret == true) {
         //writePartInfo
-//        fprintf(stderr,"\nTID %d going to write part markMax size: %d ", tid, markMax[hipart].size());
+     //  fprintf(stderr,"\nTID %d going to write part markMax size: %d ", tid, markMax[hipart].size());
         for(unsigned it=0; it<markMax[hipart].size(); it++){
           unsigned vtx1 = markMax[hipart].at(it);     //it->first;
           unsigned vtx2 = markMin[hipart].at(it);
@@ -238,7 +246,7 @@ void refineInit(const unsigned tid) {
         //  pthread_mutex_unlock(&locks[tid]);
         }
       }
-     // fprintf(stderr, "\nTID: %d, Before BarWriteInfo ", tid);
+     // fprintf(stderr, "\nTID: %d, Before BarWriteInfo Reducers: %d ", tid, nReducers);
     // pthread_barrier_wait(&(barWriteInfo));
     //  fprintf(stderr, "\nTID: %d BEFORE pIdsCompleted[%d][%d]: %d ", tid, hipart, whereMax, pIdsCompleted[hipart][whereMax]);
  //TODO: This should be set true after the entire iteration is complete-- problem addressed below by clear()
@@ -247,6 +255,9 @@ void refineInit(const unsigned tid) {
 
     }  // end of tid loop
 
+//     pthread_barrier_wait(&(barWriteInfo));
+     // fprintf(stderr, "\nTID: %d, Before BarCLEAR Reducers: %d ", tid, nReducers);
+   // pthread_barrier_wait(&(barClear));
     // clearing up for next round of fetch from disk. It should be reset for each call to reduce operation so that each batch is refined against other when fetched from disk each time.
     pIdsCompleted[tid].clear();
     return NULL;
@@ -256,9 +267,10 @@ void refineInit(const unsigned tid) {
 
   void* updateReduceIter(const unsigned tid) {
 
-     // fprintf(stderr, "\nTID: %d, UPDATE reduce ITer ", tid);
+      fprintf(stderr, "\nTID: %d, UPDATE reduce ITer ", tid);
       pthread_barrier_wait(&(barCompute));
 
+      fprintf(stderr, "\nTID: %d, Going to REFINEINIT ", tid);
       refineInit(tid);
       clearMemorystructures(tid);
 
@@ -277,7 +289,7 @@ void refineInit(const unsigned tid) {
 
 
   void* afterReduce(const unsigned tid) {
-    //fprintf(stderr, "AfterReduce\n");
+   // fprintf(stderr, "AfterReduce\n");
     fprintf(stderr, "\nthread %u waiting for others to finish Refine\n", tid);
     pthread_barrier_wait(&(barAfterRefine));
  
@@ -436,7 +448,7 @@ void refineInit(const unsigned tid) {
                     else
                       currGain = dsrc + ddst - 2;
 
-       //             fprintf(stderr, "\nTID: %d, src: %d, dst: %d, Gain: %d ", tid, src, dst, currGain);
+     //               fprintf(stderr, "\nTID: %d, src: %d, dst: %d, Gain: %d ", tid, src, dst, currGain);
 
                     if(currGain > maxG){                                                                                            maxG = currGain;
                       maxvtx = src;
@@ -453,7 +465,7 @@ void refineInit(const unsigned tid) {
       }
     //}
       if(maxvtx != -1 && minvtx != -1){
-     //  fprintf(stderr, "\nTID: %d, MASKING src: %d, dst: %d, Gain: %d ", tid, maxvtx, minvtx, maxG);
+       //fprintf(stderr, "\nTID: %d, MASKING src: %d, dst: %d, Gain: %d ", tid, maxvtx, minvtx, maxG);
         markMax.push_back(maxvtx);
         markMin.push_back(minvtx);
         return maxG;
@@ -607,7 +619,7 @@ void refineInit(const unsigned tid) {
                   //   return 0;
                   // }
                   // else if (select == "GOMR" && argc != 9) { 
-                std::cout << "Usage: " << argv[0] << " <folderpath> <gb> <nmappers> <nreducers> <batchsize> <kitems> <optional - nvertices> <optional - partitions> <optional - partition output prefix>" << std::endl;
+                std::cout << "Usage: " << argv[0] << " <folderpath> <gb> <nmappers> <nreducers> <batchsize> <kitems> <optional - nvertices> <optional - max degree> <optional - partitions> <optional - partition output prefix>" << std::endl;
 
                 return 0;
               }
@@ -618,15 +630,21 @@ void refineInit(const unsigned tid) {
               nReducers = atoi(argv[4]); // here nreducers = npartitions
               // int npartitions = 2;
               int npartitions;
+              int hiDegree;
               //int nvertices;
               //  if (select == "OMR")
               //    nvertices = -1;
 #ifdef USE_GOMR
               nvertices = atoi(argv[7]);
-              npartitions = atoi(argv[8]); //partitions
-              outputPrefix = argv[9];
+              if(atoi(argv[8]) > 0)
+                hiDegree = atoi(argv[8]);
+              else
+                hiDegree = 0;
+              npartitions = atoi(argv[9]); //partitions
+              outputPrefix = argv[10];
 #else
               nvertices = -1;
+              int hiDegree = -1;
               npartitions = 2; ///iterations if not using GOMR
 #endif
 
@@ -645,7 +663,7 @@ void refineInit(const unsigned tid) {
     pthread_barrier_init(&barClear, NULL, nReducers);
     pthread_barrier_init(&barShutdown, NULL, nReducers);
     pthread_barrier_init(&barAfterRefine, NULL, nReducers);
-              go.init(folderpath, gb, nmappers, nReducers, nvertices, batchSize, kitems, npartitions);
+              go.init(folderpath, gb, nmappers, nReducers, nvertices, hiDegree, batchSize, kitems, npartitions);
 
               go.initRefineStructs();
               double runTime = -getTimer();

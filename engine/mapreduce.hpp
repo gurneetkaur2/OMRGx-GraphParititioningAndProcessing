@@ -43,7 +43,7 @@ void* doMap(void* arg)
   // std::cout << "DoMap tid, *mr:" << tid << "\n";  //GK
 
   mr->beforeMap(tid);
-
+/* read from single file
   std::ifstream infile(mr->inputFileName.c_str()); 
   assert(infile.is_open());
   fprintf(stderr,"\nTid: %d Input file: %s\n",tid, mr->inputFileName.c_str());
@@ -70,8 +70,8 @@ unsigned lineId = tid*mr->linesPerThread + tid ;//0, 4, 8
     }                                                                                                           else
       break;
   }
-
-  /*
+*/
+  // read from multiple files
      static std::atomic<unsigned> nextFileId(0);
      unsigned fileId = 0;
      while((fileId = nextFileId++) < mr->fileList.size()) {
@@ -82,11 +82,13 @@ unsigned lineId = tid*mr->linesPerThread + tid ;//0, 4, 8
      std::string line;
      while(std::getline(infile, line)) {
      time_map -= getTimer();
-     mr->map(tid, fileId, line);
+     //NOTE: input file must be numbered for Graphs when using fileIds
+     unsigned nbufferId = mr->setPartitionId(tid);
+     mr->map(tid, fileId, line, nbufferId, mr->hiDegree);
      time_map += getTimer();
      }
      }
-   */
+   
   fprintf(stderr, "thread %u waiting for others to finish work\n", tid);
   time_map -= getTimer();
   pthread_barrier_wait(&(mr->barMap));
@@ -118,15 +120,15 @@ void* doReduce(void* arg)
   mr->beforeReduce(tid);
 
   don = false;
-  fprintf(stderr,"\nTID: %d MR BEFORE Outer While **********", tid);
+ // fprintf(stderr,"\nTID: %d MR BEFORE Outer While **********", tid);
   while(!mr->getDone(tid)){
-    fprintf(stderr,"\nTID: %d MR Outer While Don: %d **********", tid, don);
+   // fprintf(stderr,"\nTID: %d MR Outer While Don: %d **********", tid, don);
     don = true;
     mr->readInit(tid);
 
     while(true) {
       bool execLoop = mr->read(tid);
-      //fprintf(stderr,"\nMR TID: %d Inner While Don: %d, ExecL: %d **********", tid, don, execLoop);
+   //   fprintf(stderr,"\nMR TID: %d Inner While Don: %d, ExecL: %d **********", tid, don, execLoop);
       if(execLoop == false) {
 #ifdef USE_GOMR
         mr->reduce(tid, writer.readBufMap[tid]);
@@ -202,10 +204,10 @@ void* doInMemoryReduce(void* arg) {
 
   mr->beforeReduce(tid);
   don = false;
-  fprintf(stderr,"\nTID: %d InMem-MR BEFORE Outer While **********", tid);
+ // fprintf(stderr,"\nTID: %d InMem-MR BEFORE Outer While **********", tid);
 
   while(!mr->getDone(tid)){
-    fprintf(stderr,"\nTID: %d, InMem-MR Outer While Don: %d **********", tid, don);
+   // fprintf(stderr,"\nTID: %d, InMem-MR Outer While Don: %d **********", tid, don);
     don = true;
 
     InMemoryReductionState<KeyType, ValueType> state = writer.initiateInMemoryReduce(tid); 
@@ -254,7 +256,7 @@ void MapReduce<KeyType, ValueType>::run()
 
   fprintf(stderr, "Init MR Writer in-Memory Buffers\n");
   double init_time = -getTimer();
-  writer.initBuf(nMappers, nReducers, nVertices, batchSize, kBItems); // GK 
+  writer.initBuf(nMappers, nReducers, nVertices, hiDegree, batchSize, kBItems); // GK 
   fprintf(stderr, "Partitioning input for Parallel Reads\n");
     partitionInputForParallelReads();
 end_read.resize(nMappers, 0);
@@ -271,7 +273,7 @@ end_read.resize(nMappers, 0);
 
   init_time += getTimer();
 
-  fprintf(stderr, "Initializing ..\n");
+  fprintf(stderr, "\nInitializing ..\n");
 #ifdef USE_GOMR 
   writer.writeInit();
 #endif
@@ -349,18 +351,20 @@ end_read.resize(nMappers, 0);
 
 //--------------------------------------------  GK
 template <typename KeyType, typename ValueType>
-void MapReduce<KeyType, ValueType>::init(const std::string input, const unsigned g, const unsigned mappers, const unsigned reducers, const unsigned vertices, const unsigned bSize, const unsigned kItems, const unsigned iterations) {
+void MapReduce<KeyType, ValueType>::init(const std::string input, const unsigned g, const unsigned mappers, const unsigned reducers, const unsigned vertices, const unsigned hidegree, const unsigned bSize, const unsigned kItems, const unsigned iterations) {
   inputFolder = input;
   inputFileName = input;
   nMappers = mappers;
   nReducers = reducers;
   nVertices = vertices;
+  hiDegree = hidegree;
   batchSize = bSize;
   kBItems = kItems;
   gb = g;
   //unsigned int nIterations = UINT_MAX;
   nIterations = iterations;
- /* getListOfFiles(inputFolder, &fileList);
+
+  getListOfFiles(inputFolder, &fileList);
   reduceFiles(inputFolder, &fileList, gb);
   std::cout << "Number of files: " << fileList.size() << std::endl;
 
@@ -371,7 +375,7 @@ void MapReduce<KeyType, ValueType>::init(const std::string input, const unsigned
 
   printFileNames(inputFolder, &fileList, gb);
   std::cout << "Dataset size: " << gb << " GB" << std::endl;
-*/
+
   //setThreads(std::min(static_cast<unsigned>(fileList.size()), nThreads));
  // nMappers = std::min(static_cast<unsigned>(fileList.size()), nMappers);
   nReducers = std::min(nMappers, nReducers);
@@ -408,9 +412,9 @@ int MapReduce<KeyType, ValueType>::getCols()
 
 //--------------------------------------------  GK
   template <typename KeyType, typename ValueType>
-void MapReduce<KeyType, ValueType>::writeBuf(const unsigned tid, const KeyType& key, const ValueType& value, const unsigned nbufferId)
+void MapReduce<KeyType, ValueType>::writeBuf(const unsigned tid, const KeyType& key, const ValueType& value, const unsigned nbufferId, const unsigned hidegree)
 {
-  writer.writeBuf(tid, key, value, nbufferId);
+  writer.writeBuf(tid, key, value, nbufferId, hidegree);
 }
 
 //--------------------------------------------
