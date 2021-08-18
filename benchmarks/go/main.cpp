@@ -66,7 +66,7 @@ class Go : public MapReduce<KeyType, ValueType>
 
   void* beforeMap(const unsigned tid) {
     //next = new std::vector<double>[nmappers];
-    unsigned part = tid % this->getCols();
+   /* unsigned part = tid % this->getCols();
     fprintf(stderr, "TID: %d, nvert:  %d, part: %d \n", tid, nvertices, part);
     for (unsigned i = 0; i<=nvertices; ++i) {
       // fprintf(stderr, "TID: %d, Inside where i: %d \n", tid, i);
@@ -78,8 +78,22 @@ class Go : public MapReduce<KeyType, ValueType>
     }
     //  fprintf(stderr, "\n TID: %d, BEFORE key: %d prev: %f next: %f rank: %.2f \n", tid, i, prev[tid][i], next[tid][i], (1/nvertices));
      fprintf(stderr, "TID: %d, After assigning init values \n", tid);
+   */
     return NULL;
   }
+
+void writeInit(unsigned nCols, unsigned nVtces){
+   where = new std::vector<unsigned long>[nCols]; // nReducers cause problem here
+       // fprintf(stderr,"\nInside writeINIT ************ Cols: %d, Vertices: %d ", nCols, nVtces);
+   for (unsigned i = 0; i<nCols; ++i) {
+      for (unsigned j = 0; j<=nVtces; ++j) {
+           where[i].push_back(INIT_VAL);
+      }
+    }
+    for (unsigned j = 0; j<=nVtces; ++j) {
+         gWhere.push_back(-1);
+    }
+}
 
 unsigned setPartitionId(const unsigned tid)
   {
@@ -110,7 +124,7 @@ unsigned setPartitionId(const unsigned tid)
       where[part].at(to) = bufferId;
 
     for(unsigned i = 0; i < from.size(); ++i){
-                     fprintf(stderr,"\nVID: %d FROM: %zu size: %zu", to, from[i], from.size());
+                  //   fprintf(stderr,"\nVID: %d FROM: %zu size: %zu", to, from[i], from.size());
       unsigned whereFrom = hashKey(from[i]) % nReducers;
       if(where[part].at(from[i]) == INIT_VAL)
         where[part].at(from[i]) = whereFrom; // partition ID of where 'from' will go
@@ -139,7 +153,6 @@ unsigned setPartitionId(const unsigned tid)
       //refineMap[i] = 0;
     }
     //initialize the data structures required in refinement phase
-    where = new std::vector<unsigned long>[nReducers]; // nReducers cause problem here
     fetchPIds = new std::set<unsigned>[nReducers];
     dTable = new std::map<unsigned, unsigned>[nReducers];
     bndIndMap = new std::map<unsigned, unsigned >[nReducers]; // TODO:move its declaration here to make it thread local
@@ -206,7 +219,7 @@ void refineInit(const unsigned tid) {
           pIdsCompleted[tid][*it] = true;
           continue;
       }
-   // fprintf(stderr, "\nFINAL TID: %d, WHEREMAX: %d ", tid, whereMax);
+   fprintf(stderr, "\nFINAL TID: %d, WHEREMAX: %d ", tid, whereMax);
       bool ret = this->checkPIDStarted(tid, hipart, whereMax);
 //      fprintf(stderr, "\nTID: %d, refining with: %d, ret: %d ", tid, whereMax, ret);
       ComputeBECut(tid, gWhere, bndIndMap[tid], container);
@@ -214,7 +227,7 @@ void refineInit(const unsigned tid) {
     // fprintf(stderr, "\nTID: %d, Before BarEDGECUTS ", tid);
       pthread_barrier_wait(&(barEdgeCuts)); 
 
-      fprintf(stderr, "\nTID: %d, Computing Gain  Container: %d", tid, container.size());
+    //  fprintf(stderr, "\nTID: %d, Computing Gain  Container: %d", tid, container.size());
       if(ret == true){
         int maxG = -1;     
         do{
@@ -256,10 +269,11 @@ void refineInit(const unsigned tid) {
     }  // end of tid loop
 
 //     pthread_barrier_wait(&(barWriteInfo));
-     // fprintf(stderr, "\nTID: %d, Before BarCLEAR Reducers: %d ", tid, nReducers);
+     fprintf(stderr, "\nTID: %d, DONE ", tid);
    // pthread_barrier_wait(&(barClear));
     // clearing up for next round of fetch from disk. It should be reset for each call to reduce operation so that each batch is refined against other when fetched from disk each time.
     pIdsCompleted[tid].clear();
+  //  pIdStarted.clear(); causes seg fault here
     return NULL;
   }
 
@@ -663,6 +677,8 @@ void refineInit(const unsigned tid) {
     pthread_barrier_init(&barClear, NULL, nReducers);
     pthread_barrier_init(&barShutdown, NULL, nReducers);
     pthread_barrier_init(&barAfterRefine, NULL, nReducers);
+              go.writeInit(nReducers, nvertices);
+
               go.init(folderpath, gb, nmappers, nReducers, nvertices, hiDegree, batchSize, kitems, npartitions);
 
               go.initRefineStructs();

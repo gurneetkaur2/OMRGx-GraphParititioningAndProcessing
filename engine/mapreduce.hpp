@@ -131,6 +131,7 @@ void* doReduce(void* arg)
    //   fprintf(stderr,"\nMR TID: %d Inner While Don: %d, ExecL: %d **********", tid, don, execLoop);
       if(execLoop == false) {
 #ifdef USE_GOMR
+        fprintf(stderr,"\nTID: %d LAST Batch ", tid);
         mr->reduce(tid, writer.readBufMap[tid]);
 //	mr->cWrite(tid);
 	writer.cWrite(tid, writer.readBufMap[tid].size(), writer.readBufMap[tid].end());
@@ -179,6 +180,9 @@ void* doReduce(void* arg)
     }
 
     //writer.readBufMap[tid].erase(writer.readBufMap[tid].begin(), writer.readBufMap[tid].end());
+#ifdef USE_GOMR
+	writer.cWrite(tid, writer.readBufMap[tid].size(), writer.readBufMap[tid].end());
+#endif
     writer.readClear(tid);
     mr->updateReduceIter(tid);
   }
