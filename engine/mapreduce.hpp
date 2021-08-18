@@ -381,7 +381,7 @@ void MapReduce<KeyType, ValueType>::init(const std::string input, const unsigned
   std::cout << "Dataset size: " << gb << " GB" << std::endl;
 
   //setThreads(std::min(static_cast<unsigned>(fileList.size()), nThreads));
- // nMappers = std::min(static_cast<unsigned>(fileList.size()), nMappers);
+  nMappers = std::min(static_cast<unsigned>(fileList.size()), nMappers);
   nReducers = std::min(nMappers, nReducers);
   //template <typename KeyType, typename ValueType>
   std::cout << "nMappers: " << nMappers << std::endl;
