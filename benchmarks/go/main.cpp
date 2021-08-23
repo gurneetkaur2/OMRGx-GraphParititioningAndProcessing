@@ -219,15 +219,15 @@ void refineInit(const unsigned tid) {
           pIdsCompleted[tid][*it] = true;
           continue;
       }
-   fprintf(stderr, "\nFINAL TID: %d, WHEREMAX: %d ", tid, whereMax);
       bool ret = this->checkPIDStarted(tid, hipart, whereMax);
+   fprintf(stderr, "\nFINAL TID: %d, WHEREMAX: %d, Ret: %d !!!", tid, whereMax, ret);
 //      fprintf(stderr, "\nTID: %d, refining with: %d, ret: %d ", tid, whereMax, ret);
       ComputeBECut(tid, gWhere, bndIndMap[tid], container);
       // wait for other threads to compute edgecuts before calculating dvalues values
     // fprintf(stderr, "\nTID: %d, Before BarEDGECUTS ", tid);
-      pthread_barrier_wait(&(barEdgeCuts)); 
+ //     pthread_barrier_wait(&(barEdgeCuts)); 
 
-    //  fprintf(stderr, "\nTID: %d, Computing Gain  Container: %d", tid, container.size());
+     fprintf(stderr, "\nTID: %d, Computing Gain  Container: %d", tid, container.size());
       if(ret == true){
         int maxG = -1;     
         do{
@@ -236,7 +236,7 @@ void refineInit(const unsigned tid) {
         } while(maxG > 0);  //end do
       } // end if ret
 
-      pthread_barrier_wait(&(barClear)); 
+    //  pthread_barrier_wait(&(barWriteInfo)); 
       if(ret == true) {
         //writePartInfo
      //  fprintf(stderr,"\nTID %d going to write part markMax size: %d ", tid, markMax[hipart].size());
@@ -270,10 +270,10 @@ void refineInit(const unsigned tid) {
 
 //     pthread_barrier_wait(&(barWriteInfo));
      fprintf(stderr, "\nTID: %d, DONE ", tid);
-   // pthread_barrier_wait(&(barClear));
+  //  pthread_barrier_wait(&(barClear));
     // clearing up for next round of fetch from disk. It should be reset for each call to reduce operation so that each batch is refined against other when fetched from disk each time.
     pIdsCompleted[tid].clear();
-  //  pIdStarted.clear(); causes seg fault here
+//    pIdStarted.clear(); //causes seg fault here
     return NULL;
   }
 
