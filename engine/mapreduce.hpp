@@ -83,8 +83,12 @@ unsigned lineId = tid*mr->linesPerThread + tid ;//0, 4, 8
      while(std::getline(infile, line)) {
      time_map -= getTimer();
      //NOTE: input file must be numbered for Graphs when using fileIds
+#ifdef USE_GOMR
      unsigned nbufferId = mr->setPartitionId(tid);
      mr->map(tid, fileId, line, nbufferId, mr->hiDegree);
+#else
+     mr->map(tid, fileId, line);
+#endif 
      time_map += getTimer();
      }
      }
