@@ -1,0 +1,5 @@
+
+message EdgeList {
+    repeated uint64 nbrs = 1;
+}
+
