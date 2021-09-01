@@ -375,7 +375,7 @@ void MapWriter<KeyType, ValueType>::performWrite(const unsigned tid, const unsig
   {
     combine(key, it->second, vals);
     #ifdef USE_GOMR
-    // I do not need locks here because the threads will share the same key
+    // I do not need locks here because the threads will not share the same key
     nNbrs.at(key) += 1;
     #endif
     ++localCombinedPairs[tid];
@@ -636,6 +636,24 @@ template <typename KeyType, typename ValueType>
 void MapWriter<KeyType, ValueType>::cWrite(const unsigned tid) {
      cWrite(tid, readBufMap[tid].size(), readBufMap[tid].end());
 }
+
+// for calling through applications
+//--------------------------------------------------
+template <typename KeyType, typename ValueType>
+void MapWriter<KeyType, ValueType>::diskWriteContainer(const unsigned tid, const IdType startKey, unsigned noItems, InMemoryContainerConstIterator<KeyType, ValueType> begin, InMemoryContainerConstIterator<KeyType, ValueType> end) {
+  unsigned buffer = tid % nCols;
+// fprintf(stderr, "\nThread %d cWrite to partition %d noItems: %d \n", tid, buffer, noItems); 
+    
+  infinimem_cwrite_times[tid] -= getTimer();
+    pthread_mutex_lock(&locks[buffer]);
+  cWriteToInfinimem(buffer, startKey, noItems, begin, end);
+    pthread_mutex_unlock(&locks[buffer]);
+    infinimem_cwrite_times[tid] += getTimer();
+  //  fprintf(stderr,"\n*********TID: %d Total Combined : %d \n\n", tid, totalCombined[buffer]); 
+}
+  
+     //cWrite(tid, totalCombined[tid], readBufMap[tid].size(), readBufMap[tid].end());
+//}
 //--------------------------------------------------
 template <typename KeyType, typename ValueType>
 void MapWriter<KeyType, ValueType>::cWrite(const unsigned tid, unsigned noItems, InMemoryContainerConstIterator<KeyType, ValueType> end) {
