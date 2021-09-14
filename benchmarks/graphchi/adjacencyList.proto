@@ -1,0 +1,7 @@
+// Generate LITE version
+// option optimize_for = LITE_RUNTIME;
+
+message AdjacencyList {
+    required uint64 key = 1;
+    repeated uint64 nbrId = 3;
+}

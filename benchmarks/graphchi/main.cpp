@@ -3,6 +3,7 @@
 #else
 #include "data.pb.h"
 #include "edgelist.pb.h"
+#include "adjacencyList.pb.h"
 #endif
 
 #define USE_NUMERICAL_HASH
@@ -22,7 +23,7 @@
 int nvertices;
 int nmappers;
 
-EdgeList* edgeLists = NULL;
+//EdgeList* edgeLists = NULL;
 IdType totalEdges = 0;
 unsigned long long numEdges = 0;
 char modifiedArg[256] = {0x0};
@@ -35,23 +36,23 @@ typedef struct _edgeType {
   IdType src;
   IdType dst;
 
-  double vRank;
-  double rank; // of src
-  IdType numNeighbors; // of src
+//  double vRank;
+//  double rank; // of src
+//  IdType numNeighbors; // of src
 } Edge;
 
-/*struct edgeCompare {
+struct edgeCompare {
  bool operator() (const Edge& a, const Edge& b) {
     if (a.src == b.src) return (a.dst <= b.dst);
     return (a.src <= b.src);
   }
 } EdgeCompare;
-*/
+
 
 //Meta data for GraphChi shard processing
 typedef struct __intervalInfo {
   IdType lbEdgeCount;
-  //IdType ubEdgeCount;
+  IdType ubEdgeCount;
   IdType edgeCount; // dont need this
 
   IdType lbIndex;
@@ -73,7 +74,7 @@ IntervalLengths **gcd; // GraphChiData
 //static uint64_t countTotalWords = 0;
 //pthread_mutex_t countTotal;
 Edge **slidingShard = NULL;
-Edge **readEdges = NULL;
+//Edge **readEdges; // = NULL;
 const long double DAMPING_FACTOR = 0.85; // Google's recommendation in original paper.
 const long double TOLERANCE = (1e-1);
 //-------------------------------------------------
@@ -82,10 +83,12 @@ const long double TOLERANCE = (1e-1);
 
 //  - http://hadoop.apache.org/docs/current/hadoop-mapreduce-client/hadoop-mapreduce-client-core/MapReduceTutorial.html#Walk-through
 __thread unsigned iteration = 0;
-__thread IdType edgeCounter = 0;
+//__thread IdType edgeCounter = 0;
 //pagerank for previous and next iteration
+  std::vector<Edge>* readEdges;
   std::vector<double>* prev; // = (nvertices, -1);
   std::vector<double>* next; // = (nvertices, -1);
+static pthread_barrier_t barCompute;
 
 template <typename KeyType, typename ValueType>
 class GraphChi : public MapReduce<KeyType, ValueType>
@@ -99,13 +102,8 @@ class GraphChi : public MapReduce<KeyType, ValueType>
   void* beforeMap(const unsigned tid) {
     unsigned nCols = this->getCols();
     fprintf(stderr, "TID: %d, nvert:  %d part: %d \n", tid, nvertices, tid % nCols);
-    ii[tid].lbIndex = MAX_UINT;  //Account for nCols not nRows
-    //ii[tid % nCols].lbEdgeCount = 0;
-  /*  for (unsigned i = 0; i<=nvertices; ++i) {
-        prev[tid % nCols].push_back(1.0/nvertices);
-        next[tid % nCols].push_back(1.0/nvertices);
-    //  fprintf(stderr, "\n TID: %d, BEFORE key: %d prev: %f next: %f rank: %.2f \n", tid, i, prev[tid][i], next[tid][i], (1.0/nvertices));
-    }*/
+  //  ii[tid].lbIndex = MAX_UINT;  //Account for nCols not nRows
+  //  ii[tid].lbEdgeCount = 0;
    // fprintf(stderr, "\nTID %d, DONE assigning INIT values ", tid);
     return NULL;
   }
@@ -113,14 +111,25 @@ class GraphChi : public MapReduce<KeyType, ValueType>
   void writeInit(unsigned nCols, unsigned nVtces){
       prev = new std::vector<double>[nCols];
       next = new std::vector<double>[nCols];
+      readEdges = new std::vector<Edge>[nCols];
       unsigned init = 1.0/nVtces;
+      Edge e;
+      e.src = -1;
+      e.dst = -1;
       //fprintf(stderr,"\nInside writeINIT ************ Cols: %d, Vertices: %d ", nCols, nVtces);
      for (unsigned i = 0; i<nCols; ++i) {
         for (unsigned j = 0; j<=nVtces; ++j) {
             prev[i].push_back(init);
             next[i].push_back(init);
+           readEdges[i].push_back(e);
         }
      }
+  }
+unsigned setPartitionId(const unsigned tid)
+  {
+    unsigned nCols = this->getCols();
+    //fprintf(stderr,"\nTID: %d writing to partition: %d " , tid, tid % nCols);
+   return tid % nCols;
   }
 
   void* map(const unsigned tid, const unsigned fileId, const std::string& input, const unsigned nbufferId, const unsigned hiDegree)
@@ -132,16 +141,16 @@ class GraphChi : public MapReduce<KeyType, ValueType>
     unsigned currentShardCount = tid;
     //bool doneCurrentShovel = false;
     //IdType bufferSize = edgesPerShard;
-    IdType indexCount = 0;
+    //IdType indexCount = 0;
 
     inputStream >> to;
-    indexCount++;
+   // indexCount++;
 
 //    IdType currentShovelSize = 0;
-    if(ii[currentShardCount].lbIndex > to)
+  /*  if(ii[currentShardCount].lbIndex > to)
       ii[currentShardCount].lbIndex = to;
     ii[currentShardCount].lbEdgeCount = edgeCounter;
-    //std::vector<Edge> shovel; shovel.clear();
+    *///std::vector<Edge> shovel; shovel.clear();
 
 
     while(inputStream >> token){
@@ -163,13 +172,13 @@ class GraphChi : public MapReduce<KeyType, ValueType>
       //shovel.push_back(e);
       this->writeBuf(tid, to, from[i], nbufferId, 0);
     }
-    edgeCounter += from.size();
+   /* edgeCounter += from.size();
     if(ii[currentShardCount].ubIndex < to)
       ii[currentShardCount].ubIndex = to;
     ii[currentShardCount].indexCount = indexCount; //total vertices
    // ii[currentShardCount].ubEdgeCount += edgeCounter;  //total edges encountered 
-    ii[currentShardCount].edgeCount += edgeCounter; //edges in partition
-   // fprintf(stderr,"\nTID: %d indexCount: %zu , ubIndex: %zu edgeCounter: %zu", tid, indexCount, to, edgeCounter);
+    ii[currentShardCount].edgeCount = edgeCounter; //edges in partition
+  */ // fprintf(stderr,"\nTID: %d indexCount: %zu , ubIndex: %zu edgeCounter: %zu", tid, indexCount, to, edgeCounter);
 
     return NULL;
   }
@@ -183,35 +192,76 @@ class GraphChi : public MapReduce<KeyType, ValueType>
     //countThreadWords += std::accumulate(values.begin(), values.end(), 0);
     //BuildGraphChi Metadata
     unsigned shard = tid;
+    IdType indexCount = 0;
+    IdType edgeCounter = 0;
+
+    ii[shard].lbEdgeCount = edgeCounter;
     memoryShard = tid;  // current partition/tid is memoryShard
     std::vector<Edge> shovel; shovel.clear();
-    IdType edgeCounter = ii[tid].lbEdgeCount;
+    auto it_first = container.begin();
+    ii[shard].lbIndex = it_first->first;
+
+         fprintf(stderr,"\nSHARD: %u, CONTAINER elements to SHIVEL", tid);
     for(auto it = container.begin(); it != container.end(); it++){
+      //    fprintf(stderr,"\nSHARD: %u, CONTAINER elements Key: %u, values: ", tid, it->first);
         for(std::vector<unsigned>::const_iterator vit = it->second.begin(); vit != it->second.end(); vit++){ 
+        //  fprintf(stderr,"\t%u ", *vit);
            Edge e;
            e.src = *vit;
            e.dst = it->first;
            shovel.push_back(e);
+         //  edgeCounter++;
         }
-    }
+        indexCount++;
+        ii[shard].ubIndex = it->first;
+    }  
+    edgeCounter += shovel.size();
+   ii[shard].indexCount = indexCount;
+   ii[shard].ubEdgeCount = edgeCounter;
+   ii[shard].edgeCount = shovel.size();
+   // Sort shovel and add to array
+   std::sort(shovel.begin(), shovel.end(), EdgeCompare);
+
+    std::map< IdType, std::vector<IdType> > adjacencyList;
+   fprintf(stderr,"\nTID: %d Inside Reduce container size: %d, Shovel Size: %d EdgeCounter: %d ", tid, container.size(), shovel.size(), edgeCounter);
     //This loads data for Memory shard too
-    readEdges[shard] = (Edge*) calloc( container.size(), sizeof(Edge) ); // separate for each thread
+    //readEdges[shard] = (Edge *) calloc(shovel.size(), sizeof(Edge));
+    fprintf(stderr,"\nSHARD: %d ADJLIST readEdges[shard] size: %u ", shard, readEdges[shard].size());
     for(IdType i=0; i<shovel.size(); i++) {
+        //  fprintf(stderr,"\nSHARD: %u, READEDGES elements src: %u, dst: %u ", tid, shovel[i].src, shovel[i].dst);
         readEdges[shard][i] = shovel[i];
+         // fprintf(stderr,"\nSHARD: %u, READEDGES elements src: %u, dst: %u ", tid, readEdges[shard][i].src, readEdges[shard][i].dst);
+        adjacencyList[readEdges[shard][i].dst].push_back(i); // index location in current shovel; to avoid sorting during processing
     }
     assert(readEdges != NULL);
+    fprintf(stderr,"\nShard: %d CREATING ADJacencyList ", shard);
+
+    AdjacencyList *aList = new AdjacencyList[indexCount];
+//    std::map< IdType, std::vector<IdType> > aList;
+    std::map< IdType, std::vector<IdType> >::iterator it;
+    unsigned idx = 0;
+    fprintf(stderr,"\nShard: %d Adding data to ALIST ", shard);
+    for(it=adjacencyList.begin(), idx=0; it!=adjacencyList.end(); it++, idx++) {
+        aList[idx].set_key(it->first);
+        for(unsigned z=0; z<it->second.size(); z++) // in sorted order of keys
+            aList[idx].add_nbrid(it->second[z]);
+    }
+    fprintf(stderr,"\nShard: %d Waiting at BARRIER ", shard);
+   pthread_barrier_wait(&(barCompute)); 
 
     IdType count = 0;
+    IdType edgeGCounter = ii[tid].lbEdgeCount;
     for(unsigned j=0; j < this->getCols(); j++){
-        gcd[tid][j].startEdgeIndex = edgeCounter;
-        fprintf(stderr, "Processing shard: %u, interval %u: StartVertex: %zu, EndVertex: %zu, SEdgeIndex: %zu\n", tid, j, ii[tid].lbIndex, ii[j].ubIndex, gcd[tid][j].startEdgeIndex);
-        //while(readEdges[shard][count].src >= ii[j].lbIndex && readEdges[shard][count].src < ii[j].ubIndex && count < ii[tid].edgeCount) {
-        while(readEdges[shard][count].src >= ii[j].lbIndex && readEdges[shard][count].src < ii[j].ubIndex && count < container.size()) {
+        gcd[tid][j].startEdgeIndex = edgeGCounter;
+        fprintf(stderr, "\nProcessing shard: %u, interval %u: StartVertex: %zu, EndVertex: %zu, SEdgeIndex: %zu, readEdges SRC: %u\n", tid, j, ii[j].lbIndex, ii[j].ubIndex, gcd[tid][j].startEdgeIndex, readEdges[shard][count].src);
+        while(readEdges[shard][count].src >= ii[j].lbIndex && readEdges[shard][count].src < ii[j].ubIndex && count < ii[tid].edgeCount) {
+          //fprintf(stderr,"\nTID: %d ii[j].lbIndex: %d, ii[j].ubIndex: %d ", tid, ii[j].lbIndex, ii[j].ubIndex);
+        //while(readEdges[shard][count].src >= ii[j].lbIndex && readEdges[shard][count].src < ii[j].ubIndex && count < container.size()) {
               count++; // skip over
-              edgeCounter++;
+              edgeGCounter++;
         }
     fprintf(stderr, "After interval: %zu (prev: %zu)\n", readEdges[shard][count].src, readEdges[shard][count-1].src);
-    gcd[tid][j].endEdgeIndex = edgeCounter;
+    gcd[tid][j].endEdgeIndex = edgeGCounter;
     gcd[tid][j].length = gcd[tid][j].endEdgeIndex - gcd[tid][j].startEdgeIndex;
     fprintf(stderr, "Shard: %u, Interval: %u, Start: %zu, End: %zu, Length: %zu\n", tid, j, gcd[tid][j].startEdgeIndex, gcd[tid][j].endEdgeIndex, gcd[tid][j].length);
     }
@@ -219,29 +269,68 @@ class GraphChi : public MapReduce<KeyType, ValueType>
     fprintf(stderr, "%c---------------------------------\n", '-');
     //***************** Done building meta data *****************
  //for(unsigned shard=0; shard< this->getCols(); shard++) {
-    timeval s, e;
+   timeval s, e;
+   gettimeofday(&s, NULL);
+   std::vector<Edge *> es; 
+   es.reserve(ii[shard].edgeCount);
+   fprintf(stderr, "*******Shard: %u EDGES: %zu\n", shard, ii[shard].edgeCount);
+   for(unsigned j=0; j<ii[shard].indexCount; j++) {
+     // fprintf(stderr,"\nShard: %u Reading Edge: %u, dst: %d, aList[j].nbrid Size: %u ", shard, j, readEdges[shard][aList[j].nbrid(0)].dst, aList[j].nbrid_size());
+      for(int k=0; k<aList[j].nbrid_size(); k++) {
+      //fprintf(stderr,"\nShard: %u readEdges[aList[j][k]].dst: %u, aList[j].nbrid: %u ", shard, readEdges[shard][aList[j].nbrid(k)].dst, aList[j].nbrid(k));
+         assert(readEdges[shard][aList[j].nbrid(k)].dst == aList[j].key());
+         es.push_back(&readEdges[shard][aList[j].nbrid(k)]);
+      }
+      //fprintf(stderr,"\nShard: %d, Reading Edge: %d ", shard, j);
+/*     auto it = container.find(j);
+     if(it != container.end()){
+          fprintf(stderr,"\nSHARD: %u, ES elements dst: %u, src: ", tid, it->first);
+      for(auto vit=it->second.begin(); vit !=it->second.end(); vit++) {
+          fprintf(stderr,"\nShard: %u readEdges[shard][*vit].dst: %u, it->first: %u, vit: %u ", shard, readEdges[shard][*vit].dst, it->first, *vit);
+          assert(readEdges[shard][*vit].dst == it->first);
+          es.push_back(&readEdges[shard][*vit]);
+      }
+     }*/
+   }
+   assert(es.size() == ii[shard].edgeCount);
+   //if(es.size() == 0) continue;
+   gettimeofday(&e, NULL);
+   fprintf(stderr, "Sorting memory shard %u took: %.3lf\n", memoryShard, tmDiff(s, e));
+
     fprintf(stderr, "Initialize sub-graph: %u\n", memoryShard);
     gettimeofday(&s, NULL);
     std::vector<Edge *> vertices; 
     unsigned vertexCounter = 0;
-    IdType v = shovel[0].dst;
-    for(unsigned j=0; j<container.size();) {
-        v = shovel[j].dst;
-        vertices.push_back(&shovel[j++]); vertexCounter++;
-        //while(j<ii[shard].edgeCount && v==shovel[j].dst) j++;  //TODO: edgecount should be buffer count
-        while(j<container.size() && v==shovel[j].dst) j++;  
+    IdType v = es[0]->dst;
+    for(unsigned j=0; j<ii[shard].edgeCount;) {
+        v = es[j]->dst;
+        vertices.push_back(es[j++]); vertexCounter++;
+        while(j<ii[shard].edgeCount && v==es[j]->dst) j++;  //TODO: edgecount should be buffer count
+       // while(j<shovel.size() && v==shovel[j].dst) j++;  
     }
     gettimeofday(&e, NULL);
-    fprintf(stderr, "Initializing subgraph for memory shard %u took: %.3lf\n", memoryShard, tmDiff(s, e));
-    fprintf(stderr, "Num vertices: %zu, IC: %zu\n", vertices.size(), container.size());
-    //assert(vertices.size() == ii[shard].indexCount);
-    assert(vertices.size() == container.size());
+    fprintf(stderr, "\nInitializing subgraph for memory shard %u took: %.3lf\n", memoryShard, tmDiff(s, e));
+    fprintf(stderr, "Num vertices: %zu, IC: %zu\n", vertices.size(), ii[shard].indexCount); //container.size());
+    assert(vertices.size() == ii[shard].indexCount);
+    //assert(vertices.size() == container.size());
     
      // then load sliding shards
+     /*fprintf(stderr, "\n NEXT -- TID: %d Loading sliding shards", tid);
+      Edge edge;
+      edge.src = -1;
+      edge.dst = -1;
+     for (unsigned i = 0; i<this->getCols(); ++i) {
+        for (unsigned j = 0; j<readEdges[shard].size(); ++j) {
+            slidingShard[i][j] = edge;
+        }
+     }
      gettimeofday(&s, NULL);
+    // fprintf(stderr,"\nShard: %d, readEdges[shard].size(): %d ", shard, readEdges[shard].size()); 
      for(unsigned ss=0; ss<this->getCols(); ss++) {
         if(ss == shard) { 
-           slidingShard[ss] = readEdges[shard];
+           for(unsigned i=0; i<readEdges[shard].size(); i++){
+              slidingShard[ss][i] = readEdges[shard][i];
+           }
            continue;
         }
         efprintf(stderr, "Loading sliding shard: %u\n", ss);
@@ -257,16 +346,16 @@ class GraphChi : public MapReduce<KeyType, ValueType>
      }
     gettimeofday(&e, NULL);
     fprintf(stderr, "Loading sliding shards for memory shard %u took: %.3lf\n", memoryShard, tmDiff(s, e));
-    
+    */
     // then parallel-process shard
     bool changed = true;
     gettimeofday(&s, NULL);
                                                           
     //for(unsigned i=0; i<container.size(); ) { 
+       fprintf(stderr, "TID: %d, Processing shard: %u \n", tid, memoryShard);
     for(unsigned i= 0; i<vertices.size(); ) { 
        IdType dst = vertices[i]->dst;
        long double sum = 0.0;
-       fprintf(stderr, "TID: %d, Processing shard: %u, %zu \n", tid, memoryShard, vertices[i]->dst);
 
        // process neighbors
        unsigned dstStartIndex = i;
@@ -284,22 +373,24 @@ class GraphChi : public MapReduce<KeyType, ValueType>
 
     }
      gettimeofday(&e, NULL);
-     fprintf(stderr, "Parallel processing of subgraph for memory shard %u took: %.3lf\n", memoryShard, tmDiff(s, e));
+     fprintf(stderr, "!!!!!Parallel processing of subgraph for memory shard %u took: %.3lf\n", memoryShard, tmDiff(s, e));
      fprintf(stderr, "-------------------------%c\n", '-');
     //fprintf(stderr, "\n TID: %d, AFTER Key: %d prev: %f next: %f \n", tid, key, prev[tid].at(key), next[tid].at(key));
+   delete [] aList; aList = NULL;
     return NULL;
   }
 
   void* updateReduceIter(const unsigned tid) {
-
-  // Clear sliding shards:
+    fprintf(stderr,"\nTID: %d Updating reduce Iteration ", tid);
     free(slidingShard[tid]); slidingShard[tid] = NULL;
-    free(readEdges[tid]); readEdges[tid] = NULL;
-    MallocExtension::instance()->ReleaseFreeMemory();
+    gcd[tid] = { };
+   // readEdges[tid] = { };
+   // free(readEdges[tid]); readEdges[tid] = NULL;
+    readEdges[tid].clear();
 
     ++iteration;
     if(iteration > this->getIterations()){
-           //      fprintf(stderr, "\nTID: %d, Iteration: %d Complete ", tid, iteration);
+       fprintf(stderr, "\nTID: %d, Iteration: %d Complete ", tid, iteration);
        don = true;
     }
     //fprintf(stderr, "AfterReduce\n");
@@ -318,6 +409,13 @@ class GraphChi : public MapReduce<KeyType, ValueType>
 
   void* afterReduce(const unsigned tid) {
 
+  // Clear sliding shards:
+    free(slidingShard[tid]); slidingShard[tid] = NULL;
+    free(gcd[tid]); gcd[tid] = NULL;
+   // free(readEdges[tid]); readEdges[tid] = NULL;
+    readEdges[tid].clear();
+    delete[] readEdges;
+    MallocExtension::instance()->ReleaseFreeMemory();
     return NULL;
   }
 
@@ -372,7 +470,7 @@ else
 #else
 nvertices = -1;
 niterations = 1;
-hiDegree = -1
+hiDegree = 0;
 #endif
 
 int batchSize = atoi(argv[5]);
@@ -390,20 +488,25 @@ gc.writeInit(nreducers, nvertices);
 //slidingShard = (Edge **) calloc(numShards, sizeof(Edge *));
 timeval s, e;
 gettimeofday(&s, NULL);
-fprintf(stderr, "Reading edge lists\n");
-edgeLists = new EdgeList[nvertices];
+//fprintf(stderr, "Reading edge lists\n");
+//edgeLists = new EdgeList[nvertices];
 //readEdgeLists(edgeLists);
 gettimeofday(&e, NULL);
 fprintf(stderr, "Reading edge lists took: %.3lf\n", tmDiff(s, e));
 
+pthread_barrier_init(&barCompute, NULL, nreducers);
 ii = (IntervalInfo *) calloc(numShards, sizeof(IntervalInfo));
 assert(ii != NULL);
+
 
 gcd = (IntervalLengths **) calloc(nreducers, sizeof(IntervalLengths *));
 for(unsigned i=0; i<nreducers; i++) {
     gcd[i] = (IntervalLengths *) calloc(nreducers, sizeof(IntervalLengths));
+//    readEdges[i] = (Edge *) calloc(kitems, sizeof(Edge));
     assert(gcd[i] != NULL);
+    //assert(readEdges[i] != NULL);
 }
+   // readEdges = new Edge[nreducers]; // (Edge *) calloc( nreducers, sizeof(Edge) ); // separate for each thread
 
 // for efficiently traversing sliding shards
 unsigned *ssIndex = (unsigned *) calloc(numShards, sizeof(unsigned)); assert(ssIndex != NULL);
@@ -413,8 +516,8 @@ gc.run();
 runTime += getTimer();
 
 std::cout << "Main::Run time : " << runTime << " (msec)" << std::endl;
-delete[] edgeLists; 
-free(ii);
+//delete[] edgeLists; 
+free(ii); //free(gcd);
 //std::cout << "Total words: " << countTotalWords << std::endl;
 return 0;
 }

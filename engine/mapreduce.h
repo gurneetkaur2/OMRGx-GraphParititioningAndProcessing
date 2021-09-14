@@ -48,7 +48,7 @@ class MapReduce
  #endif
     virtual void* updateReduceIter(const unsigned tid) { };
     virtual void* afterReduce(const unsigned tid) { };
-    virtual unsigned setPartitionId(const unsigned tid) { };
+    virtual unsigned setPartitionId(const unsigned tid) { return -1; };
     //virtual void* readAfterReduce(const unsigned tid, const InMemoryContainer<KeyType, ValueType>& container) { };
 //    virtual void* readAfterReduce(const unsigned tid) { };
  //   virtual void* writeAfterReduce(const unsigned tid, const InMemoryContainer<KeyType, ValueType>& container) { };

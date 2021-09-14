@@ -75,22 +75,23 @@ unsigned lineId = tid*mr->linesPerThread + tid ;//0, 4, 8
      static std::atomic<unsigned> nextFileId(0);
      unsigned fileId = 0;
      while((fileId = nextFileId++) < mr->fileList.size()) {
-     std::string fname = mr->inputFolder + "/" + mr->fileList.at(fileId);
-     if(fileId % 1000 == 0) fprintf(stderr, "thread %u working on file %d which is %s\n", tid, fileId, fname.c_str());
-     std::ifstream infile(fname.c_str());
-     ASSERT_WITH_MESSAGE(infile.is_open(), fname.c_str());
-     std::string line;
-     while(std::getline(infile, line)) {
-     time_map -= getTimer();
-     //NOTE: input file must be numbered for Graphs when using fileIds
+      std::string fname = mr->inputFolder + "/" + mr->fileList.at(fileId);
+      if(fileId % 1000 == 0) fprintf(stderr, "thread %u working on file %d which is %s\n", tid, fileId, fname.c_str());
+      //fprintf(stderr, "thread %u working on file %d which is %s\n", tid, fileId, fname.c_str());
+      std::ifstream infile(fname.c_str());
+      ASSERT_WITH_MESSAGE(infile.is_open(), fname.c_str());
+      std::string line;
+      while(std::getline(infile, line)) {
+       time_map -= getTimer();
+       //NOTE: input file must be numbered for Graphs when using fileIds
 #ifdef USE_GOMR
-     unsigned nbufferId = mr->setPartitionId(tid);
-     mr->map(tid, fileId, line, nbufferId, mr->hiDegree);
+       unsigned nbufferId = mr->setPartitionId(tid);
+       mr->map(tid, fileId, line, nbufferId, mr->hiDegree);
 #else
-     mr->map(tid, fileId, line);
+       mr->map(tid, fileId, line);
 #endif 
-     time_map += getTimer();
-     }
+       time_map += getTimer();
+      }
      }
    
   fprintf(stderr, "thread %u waiting for others to finish work\n", tid);
@@ -124,18 +125,19 @@ void* doReduce(void* arg)
   mr->beforeReduce(tid);
 
   don = false;
- // fprintf(stderr,"\nTID: %d MR BEFORE Outer While **********", tid);
+  //fprintf(stderr,"\nTID: %d MR BEFORE Outer While **********", tid);
   while(!mr->getDone(tid)){
-   // fprintf(stderr,"\nTID: %d MR Outer While Don: %d **********", tid, don);
+    fprintf(stderr,"\nTID: %d MR Outer While Don: %d **********", tid, don);
     don = true;
     mr->readInit(tid);
 
     while(true) {
       bool execLoop = mr->read(tid);
-   //   fprintf(stderr,"\nMR TID: %d Inner While Don: %d, ExecL: %d **********", tid, don, execLoop);
+      //fprintf(stderr,"\nMR TID: %d Inner While Don: %d, ExecL: %d **********", tid, don, execLoop);
       if(execLoop == false) {
 #ifdef USE_GOMR
-        fprintf(stderr,"\nTID: %d LAST Batch ", tid);
+        fprintf(stderr,"\nTID: %d LAST Batch  map size: %d", tid, writer.readBufMap[tid].size());
+        assert(writer.readBufMap[tid].size() != 0);
         mr->reduce(tid, writer.readBufMap[tid]);
 //	mr->cWrite(tid);
 	writer.cWrite(tid, writer.readBufMap[tid].size(), writer.readBufMap[tid].end());
@@ -289,7 +291,7 @@ end_read.resize(nMappers, 0);
   fprintf(stderr, "Running Mappers\n");
   parallelExecute(doMap<KeyType, ValueType>, this, nMappers);
 
-  //  assert(false);
+   //assert(false);
   if(!writer.getWrittenToDisk()) {
     fprintf(stderr, "Running InMemoryReducers\n");
     parallelExecute(doInMemoryReduce<KeyType, ValueType>, this, nReducers);

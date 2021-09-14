@@ -46,6 +46,7 @@ Thumbs.db
 *.d
 *.pb.h
 benchmarks/*/data.pb.o
+benchmarks/*/*.pb.o
 benchmarks/pgrank/input_1gb.list
 benchmarks/*/main.o
 benchmarks/pgrank/pagerank.bin

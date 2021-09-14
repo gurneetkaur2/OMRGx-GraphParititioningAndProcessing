@@ -658,7 +658,7 @@ void refineInit(const unsigned tid) {
               outputPrefix = argv[10];
 #else
               nvertices = -1;
-              int hiDegree = -1;
+              hiDegree = -1;
               npartitions = 2; ///iterations if not using GOMR
 #endif
 

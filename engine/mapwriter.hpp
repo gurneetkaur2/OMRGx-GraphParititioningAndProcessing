@@ -173,11 +173,11 @@ void MapWriter<KeyType, ValueType>::writeBuf(const unsigned tid, const KeyType& 
       prev[part].at(value) = whereVal;
   }
 */
- // 	fprintf(stderr, "\nWB- start outbufmap size : %d\t buffer: %llu\t nItems: %u", outBufMap[buffer].size(),buffer, nItems[buffer]);
+//  	fprintf(stderr, "\nWB- start outbufmap size : %d\t buffer: %llu\t nItems: %u", outBufMap[buffer].size(),buffer, nItems[buffer]);
   
   if (outBufMap[buffer].size() >= batchSize)   
   {
-    //fprintf(stderr, "thread %u flushing off buffer %llu to file %llu\n", tid, buffer, bufferId);
+//    fprintf(stderr, "thread %u flushing off buffer %llu to file %llu\n", tid, buffer, bufferId);
     
     infinimem_write_times[tid] -= getTimer();
     pthread_mutex_lock(&locks[bufferId]);
@@ -419,7 +419,7 @@ void MapWriter<KeyType, ValueType>::writeToInfinimem(const unsigned buffer, cons
   }
   assert(ct == noItems);
   // 2. Write to infinimem partition -- infinimem locks to guarantee correct writes 
-  //	 fprintf(stderr, "\nWTI- Before writing -- Buffer: %llu \t startkey: %u\t noItems: %u\n", buffer, startKey, noItems);
+  	 //fprintf(stderr, "\nWTI- Before writing -- Buffer: %llu \t startkey: %u\t noItems: %u\n", buffer, startKey, noItems);
   // busy wait
   //infinimem_write_times[buffer] -= getTimer();
   io->file_set_batch(buffer, startKey, noItems, records);
