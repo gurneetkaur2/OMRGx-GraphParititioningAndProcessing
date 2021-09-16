@@ -127,7 +127,7 @@ void* doReduce(void* arg)
   don = false;
   //fprintf(stderr,"\nTID: %d MR BEFORE Outer While **********", tid);
   while(!mr->getDone(tid)){
-    fprintf(stderr,"\nTID: %d MR Outer While Don: %d **********", tid, don);
+    //fprintf(stderr,"\nTID: %d MR Outer While Don: %d **********", tid, don);
     don = true;
     mr->readInit(tid);
 
@@ -136,7 +136,7 @@ void* doReduce(void* arg)
       //fprintf(stderr,"\nMR TID: %d Inner While Don: %d, ExecL: %d **********", tid, don, execLoop);
       if(execLoop == false) {
 #ifdef USE_GOMR
-        fprintf(stderr,"\nTID: %d LAST Batch  map size: %d", tid, writer.readBufMap[tid].size());
+     //   fprintf(stderr,"\nTID: %d LAST Batch  map size: %d", tid, writer.readBufMap[tid].size());
         assert(writer.readBufMap[tid].size() != 0);
         mr->reduce(tid, writer.readBufMap[tid]);
 //	mr->cWrite(tid);
@@ -219,7 +219,6 @@ void* doInMemoryReduce(void* arg) {
   while(!mr->getDone(tid)){
    // fprintf(stderr,"\nTID: %d, InMem-MR Outer While Don: %d **********", tid, don);
     don = true;
-
     InMemoryReductionState<KeyType, ValueType> state = writer.initiateInMemoryReduce(tid); 
 
     InMemoryContainer<KeyType, ValueType> record;
@@ -394,6 +393,7 @@ void MapReduce<KeyType, ValueType>::init(const std::string input, const unsigned
   std::cout << "nReducers: " << nReducers << std::endl;
   std::cout << "batchSize: " << batchSize << std::endl;
   std::cout << "topk: " << kBItems << std::endl;
+  std::cout << "iterations: " << iterations << std::endl;
 
   pthread_barrier_init(&barMap, NULL, nMappers);
   pthread_barrier_init(&barReduce, NULL, nReducers);
