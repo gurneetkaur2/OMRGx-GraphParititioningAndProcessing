@@ -26,12 +26,10 @@ int nmappers;
 //EdgeList* edgeLists = NULL;
 IdType totalEdges = 0;
 unsigned long long numEdges = 0;
-char modifiedArg[256] = {0x0};
-const char *compThreadsArg = "--prodsm-compthreads=";
+//char modifiedArg[256] = {0x0};
+//const char *compThreadsArg = "--prodsm-compthreads=";
 //#define SHARDSIZE_MB 1024 // via compiler directive
 unsigned edgesPerShard = SHARDSIZE_MB*1024*1024/sizeof(IdType);
-unsigned numShards = 0;
-unsigned memoryShard = 0;
 typedef struct _edgeType {
   IdType src;
   IdType dst;
@@ -73,8 +71,6 @@ IntervalLengths **gcd; // GraphChiData
 
 //static uint64_t countTotalWords = 0;
 //pthread_mutex_t countTotal;
-Edge **slidingShard = NULL;
-//Edge **readEdges; // = NULL;
 const long double DAMPING_FACTOR = 0.85; // Google's recommendation in original paper.
 const long double TOLERANCE = (1e-1);
 //-------------------------------------------------
@@ -89,22 +85,17 @@ __thread unsigned iteration = 0;
   std::vector<double>* prev; // = (nvertices, -1);
   std::vector<double>* next; // = (nvertices, -1);
 static pthread_barrier_t barCompute;
+static pthread_barrier_t barWait;
 
 template <typename KeyType, typename ValueType>
 class GraphChi : public MapReduce<KeyType, ValueType>
 {
- // static thread_local uint64_t countThreadWords;
-  //static thread_local std::vector<unsigned> prev; // = (nvertices, -1);
-  //static thread_local std::vector<unsigned> next; // = (nvertices, -1);
 
   public:
 
   void* beforeMap(const unsigned tid) {
     unsigned nCols = this->getCols();
     fprintf(stderr, "TID: %d, nvert:  %d part: %d \n", tid, nvertices, tid % nCols);
-  //  ii[tid].lbIndex = MAX_UINT;  //Account for nCols not nRows
-  //  ii[tid].lbEdgeCount = 0;
-   // fprintf(stderr, "\nTID %d, DONE assigning INIT values ", tid);
     return NULL;
   }
 
@@ -129,7 +120,7 @@ unsigned setPartitionId(const unsigned tid)
   {
     unsigned nCols = this->getCols();
     //fprintf(stderr,"\nTID: %d writing to partition: %d " , tid, tid % nCols);
-   return tid % nCols;
+   return -1; // tid % nCols;
   }
 
   void* map(const unsigned tid, const unsigned fileId, const std::string& input, const unsigned nbufferId, const unsigned hiDegree)
@@ -139,19 +130,8 @@ unsigned setPartitionId(const unsigned tid)
     unsigned to, token;
     std::vector<unsigned> from;
     unsigned currentShardCount = tid;
-    //bool doneCurrentShovel = false;
-    //IdType bufferSize = edgesPerShard;
-    //IdType indexCount = 0;
 
     inputStream >> to;
-   // indexCount++;
-
-//    IdType currentShovelSize = 0;
-  /*  if(ii[currentShardCount].lbIndex > to)
-      ii[currentShardCount].lbIndex = to;
-    ii[currentShardCount].lbEdgeCount = edgeCounter;
-    *///std::vector<Edge> shovel; shovel.clear();
-
 
     while(inputStream >> token){
       from.push_back(token);
@@ -160,25 +140,11 @@ unsigned setPartitionId(const unsigned tid)
 
     prev[tid].at(to) = 1.0/nvertices;
     for(unsigned i = 0; i < from.size(); ++i){
-    // fprintf(stderr,"\nVID: %d FROM: %zu size: %zu", to, from[i], from.size());
-/*      Edge e;
-      e.src = from[i];
-      e.dst = to;
-  *///    e.rank = 1.0/nvertices;
       prev[tid].at(from[i]) = 1.0/nvertices;
-   //   e.vRank = 1.0/nvertices;
-   //   e.numNeighbors = from.size(); 
 
       //shovel.push_back(e);
       this->writeBuf(tid, to, from[i], nbufferId, 0);
     }
-   /* edgeCounter += from.size();
-    if(ii[currentShardCount].ubIndex < to)
-      ii[currentShardCount].ubIndex = to;
-    ii[currentShardCount].indexCount = indexCount; //total vertices
-   // ii[currentShardCount].ubEdgeCount += edgeCounter;  //total edges encountered 
-    ii[currentShardCount].edgeCount = edgeCounter; //edges in partition
-  */ // fprintf(stderr,"\nTID: %d indexCount: %zu , ubIndex: %zu edgeCounter: %zu", tid, indexCount, to, edgeCounter);
 
     return NULL;
   }
@@ -188,59 +154,57 @@ unsigned setPartitionId(const unsigned tid)
   }
 
   void* reduce(const unsigned tid, const InMemoryContainer<KeyType, ValueType>& container) {
-    //std::vector<ValueType>& values) {
-    //countThreadWords += std::accumulate(values.begin(), values.end(), 0);
     //BuildGraphChi Metadata
+    //fprintf(stderr,"\nTID: %d Inside REDUCER @@@@@@ " , tid);
     unsigned shard = tid;
     IdType indexCount = 0;
     IdType edgeCounter = 0;
 
     ii[shard].lbEdgeCount = edgeCounter;
-    memoryShard = tid;  // current partition/tid is memoryShard
+    unsigned memoryShard = tid;  // current partition/tid is memoryShard
     std::vector<Edge> shovel; shovel.clear();
+    assert(container.size() > 0);
     auto it_first = container.begin();
     ii[shard].lbIndex = it_first->first;
 
-         fprintf(stderr,"\nSHARD: %u, CONTAINER elements to SHIVEL", tid);
+    IdType lbIndex = container.begin()->first;
+    //fprintf(stderr,"\nSHARD: %u, CONTAINER elements to SHIVEL LowerBound: %d ", tid, ii[shard].lbIndex);
     for(auto it = container.begin(); it != container.end(); it++){
-      //    fprintf(stderr,"\nSHARD: %u, CONTAINER elements Key: %u, values: ", tid, it->first);
+     //     fprintf(stderr,"\nSHARD: %u, CONTAINER elements Key: %u, values: ", tid, it->first);
         for(std::vector<unsigned>::const_iterator vit = it->second.begin(); vit != it->second.end(); vit++){ 
-        //  fprintf(stderr,"\t%u ", *vit);
+         // fprintf(stderr,"\t%u ", *vit);
            Edge e;
            e.src = *vit;
            e.dst = it->first;
            shovel.push_back(e);
-         //  edgeCounter++;
         }
         indexCount++;
         ii[shard].ubIndex = it->first;
-    }  
+    }
+    fprintf(stderr,"\nSHARD: %u, CONTAINER elements to SHIVEL upperBound: %d ", tid, ii[shard].ubIndex);
     edgeCounter += shovel.size();
    ii[shard].indexCount = indexCount;
    ii[shard].ubEdgeCount = edgeCounter;
    ii[shard].edgeCount = shovel.size();
    // Sort shovel and add to array
-   std::sort(shovel.begin(), shovel.end(), EdgeCompare);
+   //std::sort(shovel.begin(), shovel.end(), EdgeCompare);
 
-    std::map< IdType, std::vector<IdType> > adjacencyList;
-   fprintf(stderr,"\nTID: %d Inside Reduce container size: %d, Shovel Size: %d EdgeCounter: %d ", tid, container.size(), shovel.size(), edgeCounter);
+    std::map< IdType, std::vector<IdType> > adjacencyList; adjacencyList.clear();
+   fprintf(stderr,"\nTID: %d Inside Reduce container size: %d, Shovel Size: %d EdgeCounter: %zu ", tid, container.size(), shovel.size(), edgeCounter);
     //This loads data for Memory shard too
-    //readEdges[shard] = (Edge *) calloc(shovel.size(), sizeof(Edge));
-    fprintf(stderr,"\nSHARD: %d ADJLIST readEdges[shard] size: %u ", shard, readEdges[shard].size());
+   // fprintf(stderr,"\nSHARD: %d ADJLIST readEdges[shard] size: %u ", shard, readEdges[shard].size());
     for(IdType i=0; i<shovel.size(); i++) {
-        //  fprintf(stderr,"\nSHARD: %u, READEDGES elements src: %u, dst: %u ", tid, shovel[i].src, shovel[i].dst);
         readEdges[shard][i] = shovel[i];
-         // fprintf(stderr,"\nSHARD: %u, READEDGES elements src: %u, dst: %u ", tid, readEdges[shard][i].src, readEdges[shard][i].dst);
-        adjacencyList[readEdges[shard][i].dst].push_back(i); // index location in current shovel; to avoid sorting during processing
+    //      fprintf(stderr,"\nSHARD: %u, READEDGES elements src: %u, dst: %u  adJList: %zu ", tid, readEdges[shard][i].src, readEdges[shard][i].dst, adjacencyList[readEdges[shard][i].dst]);
+        IdType key = readEdges[shard][i].dst;
+        adjacencyList[key].push_back(i); // index location in current shovel; to avoid sorting during processing
     }
     assert(readEdges != NULL);
-    fprintf(stderr,"\nShard: %d CREATING ADJacencyList ", shard);
 
     AdjacencyList *aList = new AdjacencyList[indexCount];
 //    std::map< IdType, std::vector<IdType> > aList;
     std::map< IdType, std::vector<IdType> >::iterator it;
     unsigned idx = 0;
-    fprintf(stderr,"\nShard: %d Adding data to ALIST ", shard);
     for(it=adjacencyList.begin(), idx=0; it!=adjacencyList.end(); it++, idx++) {
         aList[idx].set_key(it->first);
         for(unsigned z=0; z<it->second.size(); z++) // in sorted order of keys
@@ -251,7 +215,7 @@ unsigned setPartitionId(const unsigned tid)
 
     IdType count = 0;
     IdType edgeGCounter = ii[tid].lbEdgeCount;
-    for(unsigned j=0; j < this->getCols(); j++){
+   for(unsigned j=0; j < this->getCols(); j++){
         gcd[tid][j].startEdgeIndex = edgeGCounter;
         fprintf(stderr, "\nProcessing shard: %u, interval %u: StartVertex: %zu, EndVertex: %zu, SEdgeIndex: %zu, readEdges SRC: %u\n", tid, j, ii[j].lbIndex, ii[j].ubIndex, gcd[tid][j].startEdgeIndex, readEdges[shard][count].src);
         while(readEdges[shard][count].src >= ii[j].lbIndex && readEdges[shard][count].src < ii[j].ubIndex && count < ii[tid].edgeCount) {
@@ -275,22 +239,10 @@ unsigned setPartitionId(const unsigned tid)
    es.reserve(ii[shard].edgeCount);
    fprintf(stderr, "*******Shard: %u EDGES: %zu\n", shard, ii[shard].edgeCount);
    for(unsigned j=0; j<ii[shard].indexCount; j++) {
-     // fprintf(stderr,"\nShard: %u Reading Edge: %u, dst: %d, aList[j].nbrid Size: %u ", shard, j, readEdges[shard][aList[j].nbrid(0)].dst, aList[j].nbrid_size());
       for(int k=0; k<aList[j].nbrid_size(); k++) {
-      //fprintf(stderr,"\nShard: %u readEdges[aList[j][k]].dst: %u, aList[j].nbrid: %u ", shard, readEdges[shard][aList[j].nbrid(k)].dst, aList[j].nbrid(k));
          assert(readEdges[shard][aList[j].nbrid(k)].dst == aList[j].key());
          es.push_back(&readEdges[shard][aList[j].nbrid(k)]);
       }
-      //fprintf(stderr,"\nShard: %d, Reading Edge: %d ", shard, j);
-/*     auto it = container.find(j);
-     if(it != container.end()){
-          fprintf(stderr,"\nSHARD: %u, ES elements dst: %u, src: ", tid, it->first);
-      for(auto vit=it->second.begin(); vit !=it->second.end(); vit++) {
-          fprintf(stderr,"\nShard: %u readEdges[shard][*vit].dst: %u, it->first: %u, vit: %u ", shard, readEdges[shard][*vit].dst, it->first, *vit);
-          assert(readEdges[shard][*vit].dst == it->first);
-          es.push_back(&readEdges[shard][*vit]);
-      }
-     }*/
    }
    assert(es.size() == ii[shard].edgeCount);
    //if(es.size() == 0) continue;
@@ -306,13 +258,11 @@ unsigned setPartitionId(const unsigned tid)
         v = es[j]->dst;
         vertices.push_back(es[j++]); vertexCounter++;
         while(j<ii[shard].edgeCount && v==es[j]->dst) j++;  //TODO: edgecount should be buffer count
-       // while(j<shovel.size() && v==shovel[j].dst) j++;  
     }
     gettimeofday(&e, NULL);
     fprintf(stderr, "\nInitializing subgraph for memory shard %u took: %.3lf\n", memoryShard, tmDiff(s, e));
     fprintf(stderr, "Num vertices: %zu, IC: %zu\n", vertices.size(), ii[shard].indexCount); //container.size());
     assert(vertices.size() == ii[shard].indexCount);
-    //assert(vertices.size() == container.size());
     
      // then load sliding shards
      /*fprintf(stderr, "\n NEXT -- TID: %d Loading sliding shards", tid);
@@ -370,29 +320,35 @@ unsigned setPartitionId(const unsigned tid)
        unsigned dstEndIndex = i;
        for(unsigned dstIndex = dstStartIndex; dstIndex<dstEndIndex; dstIndex++)
           next[tid].at(dstIndex) = rank;
+    //fprintf(stderr, "\n TID: %d, AFTER Key: %d prev: %f next: %f \n", tid, dst, prev[tid].at(dst), next[tid].at(dst));
 
     }
      gettimeofday(&e, NULL);
      fprintf(stderr, "!!!!!Parallel processing of subgraph for memory shard %u took: %.3lf\n", memoryShard, tmDiff(s, e));
      fprintf(stderr, "-------------------------%c\n", '-');
-    //fprintf(stderr, "\n TID: %d, AFTER Key: %d prev: %f next: %f \n", tid, key, prev[tid].at(key), next[tid].at(key));
-   delete [] aList; aList = NULL;
+   pthread_barrier_wait(&(barWait)); 
+    //gcd[tid] = { };
+    readEdges[tid].clear();
+    delete [] aList; //aList = NULL;
+   //fprintf(stderr,"\nTID %d Deleted aList ------ " , tid);
     return NULL;
   }
 
   void* updateReduceIter(const unsigned tid) {
     fprintf(stderr,"\nTID: %d Updating reduce Iteration ", tid);
-    free(slidingShard[tid]); slidingShard[tid] = NULL;
-    gcd[tid] = { };
+    //free(slidingShard[tid]); slidingShard[tid] = NULL;
+    //gcd[tid] = { };
    // readEdges[tid] = { };
    // free(readEdges[tid]); readEdges[tid] = NULL;
-    readEdges[tid].clear();
+    //readEdges[tid].clear();
 
     ++iteration;
     if(iteration > this->getIterations()){
        fprintf(stderr, "\nTID: %d, Iteration: %d Complete ", tid, iteration);
        don = true;
+       return NULL;
     }
+    this->notDone(tid);
     //fprintf(stderr, "AfterReduce\n");
      // assign next to prev for the next iteration , copy to prev of all threads
    //  iters = iters + 1;
@@ -410,12 +366,10 @@ unsigned setPartitionId(const unsigned tid)
   void* afterReduce(const unsigned tid) {
 
   // Clear sliding shards:
-    free(slidingShard[tid]); slidingShard[tid] = NULL;
-    free(gcd[tid]); gcd[tid] = NULL;
+    //free(slidingShard[tid]); slidingShard[tid] = NULL;
+   // free(gcd[tid]); gcd[tid] = NULL;
    // free(readEdges[tid]); readEdges[tid] = NULL;
     readEdges[tid].clear();
-    delete[] readEdges;
-    MallocExtension::instance()->ReleaseFreeMemory();
     return NULL;
   }
 
@@ -495,7 +449,8 @@ gettimeofday(&e, NULL);
 fprintf(stderr, "Reading edge lists took: %.3lf\n", tmDiff(s, e));
 
 pthread_barrier_init(&barCompute, NULL, nreducers);
-ii = (IntervalInfo *) calloc(numShards, sizeof(IntervalInfo));
+pthread_barrier_init(&barWait, NULL, nreducers);
+ii = (IntervalInfo *) calloc(nreducers, sizeof(IntervalInfo));
 assert(ii != NULL);
 
 
@@ -509,7 +464,7 @@ for(unsigned i=0; i<nreducers; i++) {
    // readEdges = new Edge[nreducers]; // (Edge *) calloc( nreducers, sizeof(Edge) ); // separate for each thread
 
 // for efficiently traversing sliding shards
-unsigned *ssIndex = (unsigned *) calloc(numShards, sizeof(unsigned)); assert(ssIndex != NULL);
+unsigned *ssIndex = (unsigned *) calloc(nreducers, sizeof(unsigned)); assert(ssIndex != NULL);
 
 double runTime = -getTimer();
 gc.run();
@@ -518,6 +473,8 @@ runTime += getTimer();
 std::cout << "Main::Run time : " << runTime << " (msec)" << std::endl;
 //delete[] edgeLists; 
 free(ii); //free(gcd);
+delete[] readEdges;
+MallocExtension::instance()->ReleaseFreeMemory();
 //std::cout << "Total words: " << countTotalWords << std::endl;
 return 0;
 }

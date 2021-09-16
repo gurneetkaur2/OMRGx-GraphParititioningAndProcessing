@@ -54,6 +54,8 @@ benchmarks/*.o
 engine/*.o
 benchmarks/sssp/*rifier
 benchmarks/go/data/
+engine/*.d
+../go/-DUSE_GOMR*
 
 # Large media files
 *.mp4
