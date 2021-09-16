@@ -34,9 +34,9 @@ typedef struct _edgeType {
   IdType src;
   IdType dst;
 
-//  double vRank;
-//  double rank; // of src
-//  IdType numNeighbors; // of src
+  double vRank;
+  double rank; // of src
+  IdType numNeighbors; // of src
 } Edge;
 
 struct edgeCompare {
@@ -79,7 +79,8 @@ const long double TOLERANCE = (1e-1);
 
 //  - http://hadoop.apache.org/docs/current/hadoop-mapreduce-client/hadoop-mapreduce-client-core/MapReduceTutorial.html#Walk-through
 __thread unsigned iteration = 0;
-//__thread IdType edgeCounter = 0;
+__thread IdType totalRecords = 0;
+__thread IdType edgeCounter = 0;
 //pagerank for previous and next iteration
   std::vector<Edge>* readEdges;
   std::vector<double>* prev; // = (nvertices, -1);
@@ -141,9 +142,16 @@ unsigned setPartitionId(const unsigned tid)
     prev[tid].at(to) = 1.0/nvertices;
     for(unsigned i = 0; i < from.size(); ++i){
       prev[tid].at(from[i]) = 1.0/nvertices;
-
+           /*Edge e;
+           e.src = from[i];
+           e.dst = to;
+           e.rank = 1.0/nvertices;
+           e.vRank = 1.0/nvertices;
+           e.numNeighbors = from.size();
+*/
       //shovel.push_back(e);
       this->writeBuf(tid, to, from[i], nbufferId, 0);
+      //this->writeBuf(tid, to, e, nbufferId, 0);
     }
 
     return NULL;
@@ -158,7 +166,6 @@ unsigned setPartitionId(const unsigned tid)
     //fprintf(stderr,"\nTID: %d Inside REDUCER @@@@@@ " , tid);
     unsigned shard = tid;
     IdType indexCount = 0;
-    IdType edgeCounter = 0;
 
     ii[shard].lbEdgeCount = edgeCounter;
     unsigned memoryShard = tid;  // current partition/tid is memoryShard
@@ -174,14 +181,17 @@ unsigned setPartitionId(const unsigned tid)
         for(std::vector<unsigned>::const_iterator vit = it->second.begin(); vit != it->second.end(); vit++){ 
          // fprintf(stderr,"\t%u ", *vit);
            Edge e;
-           e.src = *vit;
-           e.dst = it->first;
+           e.src = *vit; //src;
+           e.dst = it->first; //*vit.dst; //it->first;
+           e.rank = 1.0/nvertices;
+           e.vRank = 1.0/nvertices;
+           e.numNeighbors = it->second.size();
            shovel.push_back(e);
         }
         indexCount++;
         ii[shard].ubIndex = it->first;
     }
-    fprintf(stderr,"\nSHARD: %u, CONTAINER elements to SHIVEL upperBound: %d ", tid, ii[shard].ubIndex);
+   // fprintf(stderr,"\nSHARD: %u, CONTAINER elements to SHIVEL upperBound: %d ", tid, ii[shard].ubIndex);
     edgeCounter += shovel.size();
    ii[shard].indexCount = indexCount;
    ii[shard].ubEdgeCount = edgeCounter;
@@ -190,7 +200,7 @@ unsigned setPartitionId(const unsigned tid)
    //std::sort(shovel.begin(), shovel.end(), EdgeCompare);
 
     std::map< IdType, std::vector<IdType> > adjacencyList; adjacencyList.clear();
-   fprintf(stderr,"\nTID: %d Inside Reduce container size: %d, Shovel Size: %d EdgeCounter: %zu ", tid, container.size(), shovel.size(), edgeCounter);
+ //  fprintf(stderr,"\nTID: %d Inside Reduce container size: %d, Shovel Size: %d EdgeCounter: %zu ", tid, container.size(), shovel.size(), edgeCounter);
     //This loads data for Memory shard too
    // fprintf(stderr,"\nSHARD: %d ADJLIST readEdges[shard] size: %u ", shard, readEdges[shard].size());
     for(IdType i=0; i<shovel.size(); i++) {
@@ -311,16 +321,17 @@ unsigned setPartitionId(const unsigned tid)
        unsigned dstStartIndex = i;
        //while(i<container.size() && dst == vertices[i]->dst){
        while(i<vertices.size() && dst == vertices[i]->dst){
-            if(nNbrs.at(vertices[i]->dst) > 0){
-              sum += prev[tid].at(vertices[i]->dst) / nNbrs.at(vertices[i]->dst);
+            //if(nNbrs.at(vertices[i]->dst) > 0){
+            if(vertices[i]->numNeighbors > 0){
+              sum += (vertices[i]->rank / vertices[i]->numNeighbors);
             }
             i++;
        }
        double rank = (1-DAMPING_FACTOR) + (DAMPING_FACTOR*sum);
+       //fprintf(stderr,"\nSHARD: %u, PR VERTICEs StartIndex : %u, ENDIndex: %u, Rank: %f ", memoryShard, dstStartIndex, i, rank);
        unsigned dstEndIndex = i;
        for(unsigned dstIndex = dstStartIndex; dstIndex<dstEndIndex; dstIndex++)
-          next[tid].at(dstIndex) = rank;
-    //fprintf(stderr, "\n TID: %d, AFTER Key: %d prev: %f next: %f \n", tid, dst, prev[tid].at(dst), next[tid].at(dst));
+          vertices[dstIndex]->vRank = rank;
 
     }
      gettimeofday(&e, NULL);
@@ -331,6 +342,8 @@ unsigned setPartitionId(const unsigned tid)
     readEdges[tid].clear();
     delete [] aList; //aList = NULL;
    //fprintf(stderr,"\nTID %d Deleted aList ------ " , tid);
+    //diskWriteContainer(tid, ii[shard].lbEdgeCount, ii[shard].edgeCount, readEdges[tid].begin(), readEdges[tid].end());
+   // totalRecords += readEdges[tid].size() ;
     return NULL;
   }
 
@@ -342,6 +355,7 @@ unsigned setPartitionId(const unsigned tid)
    // free(readEdges[tid]); readEdges[tid] = NULL;
     //readEdges[tid].clear();
 
+    edgeCounter = 0;
     ++iteration;
     if(iteration > this->getIterations()){
        fprintf(stderr, "\nTID: %d, Iteration: %d Complete ", tid, iteration);
@@ -351,7 +365,7 @@ unsigned setPartitionId(const unsigned tid)
     this->notDone(tid);
     //fprintf(stderr, "AfterReduce\n");
      // assign next to prev for the next iteration , copy to prev of all threads
-   //  iters = iters + 1;
+     
      prev[tid].assign(next[tid].begin(), next[tid].end());
   //  for (auto i = 0; i < prev[tid].size(); i++){
     //  fprintf(stderr, "\n TID: %d, prev: %f next: %f \n", tid, prev[tid][i], next[tid][i]);
