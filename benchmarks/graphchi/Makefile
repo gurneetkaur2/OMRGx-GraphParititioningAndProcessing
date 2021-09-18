@@ -1,5 +1,5 @@
 TARGET      := graphchi.bin
-#TARGET_ONE  := wordcount-one.bin
+#TARGET_ONE  := graphchi-one.bin
 CPP         := g++
 CC          := gcc
 CFLAGS      := -g -O0 -w -MMD -std=c++11 
@@ -14,15 +14,16 @@ PROTO_LIBS  := -lprotobuf
 
 RM          := rm -rf
 OBJS        := data.pb.o edgelist.pb.o adjacencyList.pb.o $(LIBPATH)/util.o main.o
-#OBJS_ONE    := $(LIBPATH)/util.o main-one.o
+#OBJS_ONE    := $(LIBPATH)/util.o graph.pb.o edgelist.pb.o adjacencyList.pb.o main-one.o
 
-OPTS        := -DUSE_GOMR #from command line (eg: OPTS+=...)
+OPTS        := -DUSE_GOMR -DUSE_GRAPHCHI #from command line (eg: OPTS+=...)
 
 -include    $(OBJS:%.o=%.d)
 
 all: CFLAGS += -O3
 #all: $(TARGET) $(TARGET_ONE)
 all: $(TARGET) 
+#all: $(TARGET_ONE) 
 
 debug: CFLAGS += -DDEBUG -g3
 #debug: $(TARGET) $(TARGET)
@@ -52,6 +53,8 @@ $(TARGET): $(OBJS)
 clean:
 	$(RM) $(LIBPATH)/*.o *.o $(LIBPATH)/*.d *.d $(TARGET) $(TARGET_ONE) *.pb.*
 
+#clean:
+#	$(RM) $(LIBPATH)/*.o *.o $(LIBPATH)/*.d *.d $(TARGET_ONE) *.pb.*
 # Dependencies:
 # 1. Protocol buffers v2.5.0
 # 2. Google's tcmalloc v2.1 --> lubunwind 0.99-beta

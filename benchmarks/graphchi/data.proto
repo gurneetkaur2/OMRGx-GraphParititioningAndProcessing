@@ -1,4 +1,15 @@
+message EdgeType{
+   required uint64 src = 1;
+   required uint64 dst = 3;
+
+   optional double vRank = 4;
+   optional double rank = 5; // of src
+   optional uint64 nNbrs = 6; // of src
+  }
 message RecordType {
   required uint64 key = 1;
-  repeated uint64 values = 2;
+//  repeated uint64 values = 2;
+  repeated EdgeType values = 2;
+
 }
+

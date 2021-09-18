@@ -1,10 +1,7 @@
-#ifdef USE_ONE_PHASE_IO
-#include "recordtype.h"
-#else
 #include "data.pb.h"
 #include "edgelist.pb.h"
 #include "adjacencyList.pb.h"
-#endif
+//#include "graph.h"
 
 #define USE_NUMERICAL_HASH
 
@@ -26,11 +23,8 @@ int nmappers;
 //EdgeList* edgeLists = NULL;
 IdType totalEdges = 0;
 unsigned long long numEdges = 0;
-//char modifiedArg[256] = {0x0};
-//const char *compThreadsArg = "--prodsm-compthreads=";
-//#define SHARDSIZE_MB 1024 // via compiler directive
 unsigned edgesPerShard = SHARDSIZE_MB*1024*1024/sizeof(IdType);
-typedef struct _edgeType {
+/*typedef struct _edgeType {
   IdType src;
   IdType dst;
 
@@ -45,7 +39,7 @@ struct edgeCompare {
     return (a.src <= b.src);
   }
 } EdgeCompare;
-
+*/
 
 //Meta data for GraphChi shard processing
 typedef struct __intervalInfo {
@@ -108,7 +102,10 @@ class GraphChi : public MapReduce<KeyType, ValueType>
       Edge e;
       e.src = -1;
       e.dst = -1;
-      //fprintf(stderr,"\nInside writeINIT ************ Cols: %d, Vertices: %d ", nCols, nVtces);
+     /* e.rank = 1.0/nvertices;
+      e.vRank = 1.0/nvertices;
+      e.numNeighbors = 0;
+      *///fprintf(stderr,"\nInside writeINIT ************ Cols: %d, Vertices: %d ", nCols, nVtces);
      for (unsigned i = 0; i<nCols; ++i) {
         for (unsigned j = 0; j<=nVtces; ++j) {
             prev[i].push_back(init);
@@ -126,7 +123,7 @@ unsigned setPartitionId(const unsigned tid)
 
   void* map(const unsigned tid, const unsigned fileId, const std::string& input, const unsigned nbufferId, const unsigned hiDegree)
   {
-   //fprintf(stderr,"\nTID: %d Inside Map", tid);
+  // fprintf(stderr,"\nTID: %d Inside Map", tid);
     std::stringstream inputStream(input);
     unsigned to, token;
     std::vector<unsigned> from;
@@ -142,16 +139,16 @@ unsigned setPartitionId(const unsigned tid)
     prev[tid].at(to) = 1.0/nvertices;
     for(unsigned i = 0; i < from.size(); ++i){
       prev[tid].at(from[i]) = 1.0/nvertices;
-           /*Edge e;
+           Edge e;
            e.src = from[i];
            e.dst = to;
            e.rank = 1.0/nvertices;
            e.vRank = 1.0/nvertices;
            e.numNeighbors = from.size();
-*/
+ //     fprintf(stderr,"\tTID: %d, src: %zu, dst: %zu, vrank: %f, rank: %f nNbrs: %u", tid, e.src, e.dst, e.vRank, e.rank, e.numNeighbors);
       //shovel.push_back(e);
-      this->writeBuf(tid, to, from[i], nbufferId, 0);
-      //this->writeBuf(tid, to, e, nbufferId, 0);
+//      this->writeBuf(tid, to, from[i], nbufferId, 0);
+      this->writeBuf(tid, to, e, nbufferId, 0);
     }
 
     return NULL;
@@ -163,7 +160,7 @@ unsigned setPartitionId(const unsigned tid)
 
   void* reduce(const unsigned tid, const InMemoryContainer<KeyType, ValueType>& container) {
     //BuildGraphChi Metadata
-    //fprintf(stderr,"\nTID: %d Inside REDUCER @@@@@@ " , tid);
+    fprintf(stderr,"\nTID: %d Inside REDUCER @@@@@@ " , tid);
     unsigned shard = tid;
     IdType indexCount = 0;
 
@@ -175,23 +172,23 @@ unsigned setPartitionId(const unsigned tid)
     ii[shard].lbIndex = it_first->first;
 
     IdType lbIndex = container.begin()->first;
-    //fprintf(stderr,"\nSHARD: %u, CONTAINER elements to SHIVEL LowerBound: %d ", tid, ii[shard].lbIndex);
+    fprintf(stderr,"\nSHARD: %u, CONTAINER elements to SHIVEL LowerBound: %d ", tid, ii[shard].lbIndex);
     for(auto it = container.begin(); it != container.end(); it++){
-     //     fprintf(stderr,"\nSHARD: %u, CONTAINER elements Key: %u, values: ", tid, it->first);
-        for(std::vector<unsigned>::const_iterator vit = it->second.begin(); vit != it->second.end(); vit++){ 
-         // fprintf(stderr,"\t%u ", *vit);
-           Edge e;
-           e.src = *vit; //src;
-           e.dst = it->first; //*vit.dst; //it->first;
-           e.rank = 1.0/nvertices;
-           e.vRank = 1.0/nvertices;
-           e.numNeighbors = it->second.size();
-           shovel.push_back(e);
+       //   fprintf(stderr,"\nSHARD: %u, CONTAINER elements Key: %u, values: ", tid, it->first);
+        for(typename std::vector<ValueType>::const_iterator vit = it->second.begin(); vit != it->second.end(); vit++){ 
+           Edge e = *vit;
+     //     fprintf(stderr,"\t src:%zu dst %zu ", e.src, e.dst);
+          /* e.src = *vit.src; //src;
+           e.dst = *vit.dst; //it->first;
+           e.rank = *vit.rank; // 1.0/nvertices;
+           e.vRank = *vit.vRank; // 1.0/nvertices;
+           e.numNeighbors = *vit.nNbrs; // it->second.size();
+        */   shovel.push_back(e);
         }
         indexCount++;
         ii[shard].ubIndex = it->first;
     }
-   // fprintf(stderr,"\nSHARD: %u, CONTAINER elements to SHIVEL upperBound: %d ", tid, ii[shard].ubIndex);
+    fprintf(stderr,"\nSHARD: %u, CONTAINER elements to SHIVEL upperBound: %d ", tid, ii[shard].ubIndex);
     edgeCounter += shovel.size();
    ii[shard].indexCount = indexCount;
    ii[shard].ubEdgeCount = edgeCounter;
@@ -200,27 +197,31 @@ unsigned setPartitionId(const unsigned tid)
    //std::sort(shovel.begin(), shovel.end(), EdgeCompare);
 
     std::map< IdType, std::vector<IdType> > adjacencyList; adjacencyList.clear();
- //  fprintf(stderr,"\nTID: %d Inside Reduce container size: %d, Shovel Size: %d EdgeCounter: %zu ", tid, container.size(), shovel.size(), edgeCounter);
+   fprintf(stderr,"\nTID: %d Inside Reduce container size: %d, Shovel Size: %d EdgeCounter: %zu ", tid, container.size(), shovel.size(), edgeCounter);
     //This loads data for Memory shard too
-   // fprintf(stderr,"\nSHARD: %d ADJLIST readEdges[shard] size: %u ", shard, readEdges[shard].size());
+    fprintf(stderr,"\nSHARD: %d ADJLIST readEdges[shard] size: %u ", shard, readEdges[shard].size());
     for(IdType i=0; i<shovel.size(); i++) {
         readEdges[shard][i] = shovel[i];
-    //      fprintf(stderr,"\nSHARD: %u, READEDGES elements src: %u, dst: %u  adJList: %zu ", tid, readEdges[shard][i].src, readEdges[shard][i].dst, adjacencyList[readEdges[shard][i].dst]);
-        IdType key = readEdges[shard][i].dst;
-        adjacencyList[key].push_back(i); // index location in current shovel; to avoid sorting during processing
+         // fprintf(stderr,"\nSHARD: %u, READEDGES elements src: %u, dst: %u  adJList: %zu ", tid, readEdges[shard][i].src, readEdges[shard][i].dst, adjacencyList[readEdges[shard][i].dst]);
+        //IdType key = readEdges[shard][i].dst;
+        adjacencyList[readEdges[shard][i].dst].push_back(i); // index location in current shovel; to avoid sorting during processing
     }
     assert(readEdges != NULL);
 
+    fprintf(stderr,"\nShard: %d Before aList IndexCount: %d adjacency List size: %zu ", shard, indexCount, adjacencyList.size());
     AdjacencyList *aList = new AdjacencyList[indexCount];
 //    std::map< IdType, std::vector<IdType> > aList;
     std::map< IdType, std::vector<IdType> >::iterator it;
     unsigned idx = 0;
     for(it=adjacencyList.begin(), idx=0; it!=adjacencyList.end(); it++, idx++) {
+          //fprintf(stderr,"\nSHARD: %u, aList elements idx: %d dst: %u  adJList size: %zu ", tid, idx, it->first, it->second.size());
         aList[idx].set_key(it->first);
-        for(unsigned z=0; z<it->second.size(); z++) // in sorted order of keys
+        for(unsigned z=0; z<it->second.size(); z++){ // in sorted order of keys
+           // fprintf(stderr,"\t nbrId: %zu ", it->second[z]);
             aList[idx].add_nbrid(it->second[z]);
+        }
     }
-    fprintf(stderr,"\nShard: %d Waiting at BARRIER ", shard);
+    fprintf(stderr,"\nShard: %d Waiting at BARRIER ", tid);
    pthread_barrier_wait(&(barCompute)); 
 
     IdType count = 0;
@@ -241,7 +242,7 @@ unsigned setPartitionId(const unsigned tid)
     }
    
     fprintf(stderr, "%c---------------------------------\n", '-');
-    //***************** Done building meta data *****************
+    // ***************** Done building meta data *****************
  //for(unsigned shard=0; shard< this->getCols(); shard++) {
    timeval s, e;
    gettimeofday(&s, NULL);
@@ -341,7 +342,7 @@ unsigned setPartitionId(const unsigned tid)
     //gcd[tid] = { };
     readEdges[tid].clear();
     delete [] aList; //aList = NULL;
-   //fprintf(stderr,"\nTID %d Deleted aList ------ " , tid);
+   fprintf(stderr,"\nTID %d Deleted aList ------ " , tid);
     //diskWriteContainer(tid, ii[shard].lbEdgeCount, ii[shard].edgeCount, readEdges[tid].begin(), readEdges[tid].end());
    // totalRecords += readEdges[tid].size() ;
     return NULL;
@@ -410,7 +411,7 @@ void* combine(const KeyType& key, std::vector<ValueType>& to, const std::vector<
 //-------------------------------------------------
 int main(int argc, char** argv)
 {
-  GraphChi<unsigned, unsigned> gc;
+  GraphChi<IdType, Edge> gc;
 
   if (argc < 8)
   {
