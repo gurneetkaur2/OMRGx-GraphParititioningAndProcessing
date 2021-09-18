@@ -166,47 +166,54 @@ unsigned setPartitionId(const unsigned tid)
 
     ii[shard].lbEdgeCount = edgeCounter;
     unsigned memoryShard = tid;  // current partition/tid is memoryShard
-    std::vector<Edge> shovel; shovel.clear();
+  ///  std::vector<Edge> shovel; shovel.clear();
     assert(container.size() > 0);
     auto it_first = container.begin();
     ii[shard].lbIndex = it_first->first;
-
+    
     IdType lbIndex = container.begin()->first;
+    std::vector<Edge *> vertices; 
+   unsigned id = 0;
+    IdType v = it_first->second[0].dst;
     fprintf(stderr,"\nSHARD: %u, CONTAINER elements to SHIVEL LowerBound: %d ", tid, ii[shard].lbIndex);
     for(auto it = container.begin(); it != container.end(); it++){
-       //   fprintf(stderr,"\nSHARD: %u, CONTAINER elements Key: %u, values: ", tid, it->first);
-        for(typename std::vector<ValueType>::const_iterator vit = it->second.begin(); vit != it->second.end(); vit++){ 
-           Edge e = *vit;
-     //     fprintf(stderr,"\t src:%zu dst %zu ", e.src, e.dst);
-          /* e.src = *vit.src; //src;
-           e.dst = *vit.dst; //it->first;
-           e.rank = *vit.rank; // 1.0/nvertices;
-           e.vRank = *vit.vRank; // 1.0/nvertices;
-           e.numNeighbors = *vit.nNbrs; // it->second.size();
-        */   shovel.push_back(e);
+          fprintf(stderr,"\nSHARD: %u, CONTAINER elements Key: %u, values: ", tid, it->first);
+      //for(typename std::vector<ValueType>::const_iterator vit = it->second.begin(); vit != it->second.end(); vit++){ 
+      for(int k=0; k<it->second.size(); k++) {
+           Edge e = it->second[k];
+           v = e.dst;
+           readEdges[shard][id++] = it->second[k];
+          //fprintf(stderr,"\t src:%zu dst %zu ", e.src, e.dst);
+        fprintf(stderr,"\nSHARD: %d ES elements dst: %zu src: %zu ", shard, it->second[k].dst, it->second[k].src);
+         vertices.push_back(&e);
+        while(k<it->second.size() && v==e.dst) k++;  //TODO: edgecount should be buffer count
+         edgeCounter++;
         }
         indexCount++;
         ii[shard].ubIndex = it->first;
     }
-    fprintf(stderr,"\nSHARD: %u, CONTAINER elements to SHIVEL upperBound: %d ", tid, ii[shard].ubIndex);
-    edgeCounter += shovel.size();
+    assert(readEdges != NULL);
+    assert(vertices.size() == ii[shard].indexCount);
+    //edgeCounter += shovel.size();
    ii[shard].indexCount = indexCount;
    ii[shard].ubEdgeCount = edgeCounter;
-   ii[shard].edgeCount = shovel.size();
+   ii[shard].edgeCount = es.size();
+  
    // Sort shovel and add to array
    //std::sort(shovel.begin(), shovel.end(), EdgeCompare);
+//assert(false);
 
-    std::map< IdType, std::vector<IdType> > adjacencyList; adjacencyList.clear();
+    fprintf(stderr,"\nSHARD: %u, CONTAINER elements to SHIVEL upperBound: %d ES SIze: %d ", tid, ii[shard].ubIndex, es.size());
+  /*  std::map< IdType, std::vector<IdType> > adjacencyList; adjacencyList.clear();
    fprintf(stderr,"\nTID: %d Inside Reduce container size: %d, Shovel Size: %d EdgeCounter: %zu ", tid, container.size(), shovel.size(), edgeCounter);
     //This loads data for Memory shard too
     fprintf(stderr,"\nSHARD: %d ADJLIST readEdges[shard] size: %u ", shard, readEdges[shard].size());
     for(IdType i=0; i<shovel.size(); i++) {
         readEdges[shard][i] = shovel[i];
-         // fprintf(stderr,"\nSHARD: %u, READEDGES elements src: %u, dst: %u  adJList: %zu ", tid, readEdges[shard][i].src, readEdges[shard][i].dst, adjacencyList[readEdges[shard][i].dst]);
+          fprintf(stderr,"\nSHARD: %u, READEDGES elements src: %u, dst: %u  adJList: %zu ", tid, readEdges[shard][i].src, readEdges[shard][i].dst, adjacencyList[readEdges[shard][i].dst]);
         //IdType key = readEdges[shard][i].dst;
         adjacencyList[readEdges[shard][i].dst].push_back(i); // index location in current shovel; to avoid sorting during processing
     }
-    assert(readEdges != NULL);
 
     fprintf(stderr,"\nShard: %d Before aList IndexCount: %d adjacency List size: %zu ", shard, indexCount, adjacencyList.size());
     AdjacencyList *aList = new AdjacencyList[indexCount];
@@ -214,13 +221,14 @@ unsigned setPartitionId(const unsigned tid)
     std::map< IdType, std::vector<IdType> >::iterator it;
     unsigned idx = 0;
     for(it=adjacencyList.begin(), idx=0; it!=adjacencyList.end(); it++, idx++) {
-          //fprintf(stderr,"\nSHARD: %u, aList elements idx: %d dst: %u  adJList size: %zu ", tid, idx, it->first, it->second.size());
+          fprintf(stderr,"\nSHARD: %u, aList elements idx: %d dst: %u  adJList size: %zu ", tid, idx, it->first, it->second.size());
         aList[idx].set_key(it->first);
         for(unsigned z=0; z<it->second.size(); z++){ // in sorted order of keys
-           // fprintf(stderr,"\t nbrId: %zu ", it->second[z]);
+            fprintf(stderr,"\t nbrId: %zu ", it->second[z]);
             aList[idx].add_nbrid(it->second[z]);
         }
     }
+    */
     fprintf(stderr,"\nShard: %d Waiting at BARRIER ", tid);
    pthread_barrier_wait(&(barCompute)); 
 
@@ -246,34 +254,37 @@ unsigned setPartitionId(const unsigned tid)
  //for(unsigned shard=0; shard< this->getCols(); shard++) {
    timeval s, e;
    gettimeofday(&s, NULL);
-   std::vector<Edge *> es; 
+  /* std::vector<Edge *> es; 
    es.reserve(ii[shard].edgeCount);
    fprintf(stderr, "*******Shard: %u EDGES: %zu\n", shard, ii[shard].edgeCount);
    for(unsigned j=0; j<ii[shard].indexCount; j++) {
       for(int k=0; k<aList[j].nbrid_size(); k++) {
          assert(readEdges[shard][aList[j].nbrid(k)].dst == aList[j].key());
+        fprintf(stderr,"\nSHARD: %d ES elements dst: %zu src: %zu ", shard, readEdges[shard][aList[j].nbrid(k)].dst, readEdges[shard][aList[j].nbrid(k)].src);
          es.push_back(&readEdges[shard][aList[j].nbrid(k)]);
       }
    }
+   //assert(false);
    assert(es.size() == ii[shard].edgeCount);
-   //if(es.size() == 0) continue;
+  */ //if(es.size() == 0) continue;
    gettimeofday(&e, NULL);
    fprintf(stderr, "Sorting memory shard %u took: %.3lf\n", memoryShard, tmDiff(s, e));
 
     fprintf(stderr, "Initialize sub-graph: %u\n", memoryShard);
     gettimeofday(&s, NULL);
-    std::vector<Edge *> vertices; 
+  /*  std::vector<Edge *> vertices; 
     unsigned vertexCounter = 0;
     IdType v = es[0]->dst;
     for(unsigned j=0; j<ii[shard].edgeCount;) {
         v = es[j]->dst;
         vertices.push_back(es[j++]); vertexCounter++;
+        fprintf(stderr,"\n SHARD: %d EC: %d, j: %d v==dst: %d ", shard, ii[shard].edgeCount, j,v==es[j]->dst);
         while(j<ii[shard].edgeCount && v==es[j]->dst) j++;  //TODO: edgecount should be buffer count
-    }
+    }*/
     gettimeofday(&e, NULL);
     fprintf(stderr, "\nInitializing subgraph for memory shard %u took: %.3lf\n", memoryShard, tmDiff(s, e));
     fprintf(stderr, "Num vertices: %zu, IC: %zu\n", vertices.size(), ii[shard].indexCount); //container.size());
-    assert(vertices.size() == ii[shard].indexCount);
+    //assert(vertices.size() == ii[shard].indexCount);
     
      // then load sliding shards
      /*fprintf(stderr, "\n NEXT -- TID: %d Loading sliding shards", tid);
@@ -341,7 +352,7 @@ unsigned setPartitionId(const unsigned tid)
    pthread_barrier_wait(&(barWait)); 
     //gcd[tid] = { };
     readEdges[tid].clear();
-    delete [] aList; //aList = NULL;
+   // delete [] aList; //aList = NULL;
    fprintf(stderr,"\nTID %d Deleted aList ------ " , tid);
     //diskWriteContainer(tid, ii[shard].lbEdgeCount, ii[shard].edgeCount, readEdges[tid].begin(), readEdges[tid].end());
    // totalRecords += readEdges[tid].size() ;
