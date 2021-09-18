@@ -64,6 +64,7 @@ class MapReduce
   */
     int getRows();
     int getCols();
+    int getContainerSize();
     int getPartitionId(const unsigned tid);
 // #ifdef USE_GOMR  
     void init(const std::string input, const unsigned g, const unsigned mappers, const unsigned reducers, const unsigned vertices, const unsigned hidegree, const unsigned bSize, const unsigned kItems, const unsigned iterations);
