@@ -1,4 +1,7 @@
 #include "mapwriter.h"
+#ifdef USE_GRAPHCHI
+#include "../benchmarks/graphchi/graph.h"
+#endif
 
 #ifdef USE_ONE_PHASE_IO
 #include "infinimem/onePhaseFileIO.hpp"
@@ -177,7 +180,7 @@ void MapWriter<KeyType, ValueType>::writeBuf(const unsigned tid, const KeyType& 
   
   if (outBufMap[buffer].size() >= batchSize)   
   {
-//    fprintf(stderr, "thread %u flushing off buffer %llu to file %llu\n", tid, buffer, bufferId);
+ //   fprintf(stderr, "thread %u flushing off buffer %llu to file %llu\n", tid, buffer, bufferId);
     
     infinimem_write_times[tid] -= getTimer();
     pthread_mutex_lock(&locks[bufferId]);
@@ -380,7 +383,8 @@ void MapWriter<KeyType, ValueType>::performWrite(const unsigned tid, const unsig
     #endif
     ++localCombinedPairs[tid];
     //cTotalKeys[buffer] += value;
-    //			         fprintf(stderr, "\nWord added in map: %s, Value after add: %d, buffer: %llu outBufMap size: %d", out.word().c_str(), value, buffer, outBufMap[buffer].size());
+//      fprintf(stderr,"\tTID: %d, src: %zu, dst: %zu, vrank: %f, rank: %f nNbrs: %u", it->second[0].src, it->second[0].dst, it->second[0].vRank, it->second[0].rank, it->second[0].numNeighbors);
+//    			         fprintf(stderr, "\nWord added in map: %d, Value after add size: %d, buffer: %llu outBufMap size: %d", key, it->second.size(), buffer, outBufMap[buffer].size());
   }
   else {
     outBufMap[buffer].emplace(key, vals); 
@@ -401,7 +405,7 @@ void MapWriter<KeyType, ValueType>::writeToInfinimem(const unsigned buffer, cons
   RecordType* records = new RecordType[noItems]; // this can be initialized with noItems
   unsigned ct = 0;
 
-  //		fprintf(stderr, "\nWTI- start -- Buffer: %llu \t startkey: %u\t noItems: %u\t InMemMap size: %d", buffer, startKey, noItems, inMemMap.size());
+//  		fprintf(stderr, "\nWTI- start -- Buffer: %llu \t startkey: %u\t noItems: %u\t InMemMap size: %d", buffer, startKey, noItems, inMemMap.size());
 
   for (InMemoryContainerConstIterator<KeyType, ValueType> it = inMemMap.begin(); it != inMemMap.end(); ++it)
   {
@@ -409,6 +413,22 @@ void MapWriter<KeyType, ValueType>::writeToInfinimem(const unsigned buffer, cons
 #ifdef USE_ONE_PHASE_IO
     assert(it->second.size() == 1);
     records[ct].set_value(it->second[0]);
+#elif USE_GRAPHCHI
+//create a normal for loop with unsigned
+    //fprintf(stderr,"\nTID: %d, writing key: %zu, vector size: %zu ", buffer, it->first, it->second.size());
+   // for (typename std::vector<ValueType>::const_iterator vit = it->second.begin(); vit != it->second.end(); ++vit){
+     for (unsigned k = 0; k <= it->second.size(); k++){
+      EdgeType* e = records[ct].add_values();
+    //  fprintf(stderr,"\tsrc: %zu, dst: %zu, vrank: , rank:  nNbrs: ", it->second[k].src, it->second[k].dst);//, 1/nVtces, 1/nVtces, it->second.size());
+     e->set_src(it->second[k].src); // = (it->second[k].src);
+     e->set_dst(it->second[k].dst); // = (it->second[k].dst);
+     e->set_vrank(it->second[k].vRank); // = (it->second[k].dst);
+     e->set_rank(it->second[k].rank); // = (it->second[k].dst);
+     e->set_nnbrs(it->second[k].numNeighbors); // = (it->second[k].dst);
+ /*    records[ct].values(it->second[k].vRank);
+     records[ct].values(it->second[k].rank);
+     records[ct].values(it->second[k].numNeighbors);
+   */ }
 #else
     for (typename std::vector<ValueType>::const_iterator vit = it->second.begin(); vit != it->second.end(); ++vit)
       records[ct].add_values(*vit);
@@ -438,6 +458,23 @@ void MapWriter<KeyType, ValueType>::betterWriteToInfinimem(const unsigned buffer
 #ifdef USE_ONE_PHASE_IO
     assert(it->second.size() == 1);
     records[ct].set_value(it->second[0]);
+#elif USE_GRAPHCHI
+//create a normal for loop with unsigned
+   // for (typename std::vector<ValueType>::const_iterator vit = it->second.begin(); vit != it->second.end(); ++vit){
+    //fprintf(stderr,"\nTID: %d, writing key: %zu, vector size: %zu ", buffer, it->first, it->second.size());
+     for (unsigned k = 0; k < it->second.size(); k++){
+    //  records[ct].add_values();
+      EdgeType* e = records[ct].add_values();
+    //  fprintf(stderr,"\tsrc: %zu, dst: %zu, vrank: , rank:  nNbrs: ", it->second[k].src, it->second[k].dst);//, 1/nVtces, 1/nVtces, it->second.size());
+     e->set_src(it->second[k].src); // = (it->second[k].src);
+     e->set_dst(it->second[k].dst); // = (it->second[k].dst);
+     e->set_vrank(it->second[k].vRank); // = (it->second[k].dst);
+     e->set_rank(it->second[k].rank); // = (it->second[k].dst);
+     e->set_nnbrs(it->second[k].numNeighbors); // = (it->second[k].dst);
+    /* records[ct].values(it->second[k].vRank);
+     records[ct].values(it->second[k].rank);
+     records[ct].values(it->second[k].numNeighbors);
+   */ }
 #else
     for (typename std::vector<ValueType>::const_iterator vit = it->second.begin(); vit != it->second.end(); ++vit)
       records[ct].add_values(*vit);
@@ -491,7 +528,8 @@ void MapWriter<KeyType, ValueType>::readInit(const unsigned tid)
 // Reads *ALL* data from disk into container
 // TODO: Should be made size-oblivious ALONG with reading in batches
   template <typename KeyType, typename ValueType>
-bool MapWriter<KeyType, ValueType>::read(const unsigned tid, InMemoryContainer<KeyType, ValueType>& readBufMap, std::vector<unsigned>& keysPerBatch, LookUpTable<KeyType>& lookUpTable, std::set<unsigned>& fetchBatchIds, std::vector<unsigned long long>& readNextInBatch, std::vector<bool>& batchesCompleted) {
+//bool MapWriter<KeyType, ValueType>::read(const unsigned tid, InMemoryContainer<KeyType, ValueType>& readBufMap, std::vector<unsigned>& keysPerBatch, LookUpTable<KeyType>& lookUpTable, std::set<unsigned>& fetchBatchIds, std::vector<unsigned long long>& readNextInBatch, std::vector<bool>& batchesCompleted) {
+bool MapWriter<KeyType, ValueType>::read(const unsigned tid, std::vector<unsigned>& keysPerBatch, LookUpTable<KeyType>& lookUpTable, std::set<unsigned>& fetchBatchIds, std::vector<unsigned long long>& readNextInBatch, std::vector<bool>& batchesCompleted) {
   infinimem_read_times[tid] -= getTimer();
   RecordType* records = new RecordType[kBItems];
   unsigned batch = 0;
@@ -513,12 +551,22 @@ bool MapWriter<KeyType, ValueType>::read(const unsigned tid, InMemoryContainer<K
     for (unsigned i = 0; i < keysPerBatch[batch]; i++)
     {
       lookUpTable[records[i].key()].push_back(batch);
-      readBufMap[records[i].key()];
+      readBufMap[tid][records[i].key()];
 #ifdef USE_ONE_PHASE_IO
-      readBufMap[records[i].key()].push_back(records[i].value());
+      readBufMap[tid][records[i].key()].push_back(records[i].value());
+#elif USE_GRAPHCHI
+      for (unsigned k = 0; k < records[i].values_size(); k++){
+        Edge b;
+        b.src = records[i].values(k).src();
+        b.dst = records[i].values(k).dst();
+        b.vRank = records[i].values(k).vrank();
+        b.rank = records[i].values(k).rank();
+        b.numNeighbors = records[i].values(k).nnbrs();
+        readBufMap[tid][records[i].key()].push_back(b); //records[i].values(k));
+      }
 #else
       for (unsigned k = 0; k < records[i].values_size(); k++)
-        readBufMap[records[i].key()].push_back(records[i].values(k));
+        readBufMap[tid][records[i].key()].push_back(records[i].values(k));
 #endif
     }
 
@@ -546,7 +594,8 @@ bool MapWriter<KeyType, ValueType>::read(const unsigned tid, InMemoryContainer<K
 
 template <typename KeyType, typename ValueType>
 bool MapWriter<KeyType, ValueType>::read(const unsigned tid) {
-  return read(tid, readBufMap[tid], keysPerBatch[tid], lookUpTable[tid], fetchBatchIds[tid], readNextInBatch[tid], batchesCompleted[tid]);
+  //return read(tid, readBufMap[tid], keysPerBatch[tid], lookUpTable[tid], fetchBatchIds[tid], readNextInBatch[tid], batchesCompleted[tid]);
+  return read(tid, keysPerBatch[tid], lookUpTable[tid], fetchBatchIds[tid], readNextInBatch[tid], batchesCompleted[tid]);
 }
 
 template <typename KeyType, typename ValueType>
@@ -679,16 +728,27 @@ void MapWriter<KeyType, ValueType>::cWriteToInfinimem(const unsigned buffer, con
      records[ct].set_key(it->first);
 //      fprintf(stderr,"\n BWTI- TID: %d, startKey: %d, Key: %d\t, Values: ", buffer, startKey, it->first); 
 
-    for (std::vector<unsigned>::const_iterator vit = it->second.begin(); vit != it->second.end(); ++vit){
+#ifdef USE_ONE_PHASE_IO
+    assert(it->second.size() == 1);
+    records[ct].set_value(it->second[0]);
+#elif USE_GRAPHCHI
+    for (typename std::vector<ValueType>::const_iterator vit = it->second.begin(); vit != it->second.end(); ++vit){
+      records[ct].add_values();
+     // records[ct].set_values(*vit);
+     }
+#else
+    for (typename std::vector<ValueType>::const_iterator vit = it->second.begin(); vit != it->second.end(); ++vit){
       records[ct].add_values(*vit);
     //  fprintf(stderr,"%d\t", *vit); 
       }
+#endif
       ++ct;
       totalCombined[buffer]++;
   }
 
   assert(ct == noItems);
   cio->file_set_batch(buffer, startKey, noItems, records);
+//  io->file_set_batch(buffer, startKey, noItems, records);
  delete[] records;
 }
 
@@ -710,10 +770,24 @@ bool MapWriter<KeyType, ValueType>::cDiskRead(const unsigned tid) {
       readBufMap[tid][parts[i].key()];
 //      fprintf(stderr,"\nREFINE- TID: %d, Key: %d\t Values: ", tid, parts[i].rank()); 
 
+#ifdef USE_ONE_PHASE_IO
+      readBufMap[tid][parts[i].key()].push_back(parts[i].value());
+#elif USE_GRAPHCHI
+      for (unsigned k = 0; k < parts[i].values_size(); k++){
+        Edge b;
+        b.src = parts[i].values(k).src();
+        b.dst = parts[i].values(k).dst();
+        b.vRank = parts[i].values(k).vrank();
+        b.rank = parts[i].values(k).rank();
+        b.numNeighbors = parts[i].values(k).nnbrs();
+        readBufMap[tid][parts[i].key()].push_back(parts[i].values());
+      }
+#else
       for (unsigned k = 0; k < parts[i].values_size(); k++){
         readBufMap[tid][parts[i].key()].push_back(parts[i].values(k));
    //        fprintf(stderr,"\nREFINE - key: %d value: %d\n", parts[i].key(), parts[i].values_size());
      }
+#endif
    }
 
     //fprintf(stderr,"\nREFINE - tid: %d, RefineMap size: %d", tid, refineMap[tid].size());
