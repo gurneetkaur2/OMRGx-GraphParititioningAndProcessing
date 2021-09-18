@@ -415,9 +415,9 @@ void MapWriter<KeyType, ValueType>::writeToInfinimem(const unsigned buffer, cons
     records[ct].set_value(it->second[0]);
 #elif USE_GRAPHCHI
 //create a normal for loop with unsigned
-    //fprintf(stderr,"\nTID: %d, writing key: %zu, vector size: %zu ", buffer, it->first, it->second.size());
+   // fprintf(stderr,"\nTID: %d, writing key: %zu, vector size: %zu ", buffer, it->first, it->second.size());
    // for (typename std::vector<ValueType>::const_iterator vit = it->second.begin(); vit != it->second.end(); ++vit){
-     for (unsigned k = 0; k <= it->second.size(); k++){
+     for (unsigned k = 0; k < it->second.size(); k++){
       EdgeType* e = records[ct].add_values();
     //  fprintf(stderr,"\tsrc: %zu, dst: %zu, vrank: , rank:  nNbrs: ", it->second[k].src, it->second[k].dst);//, 1/nVtces, 1/nVtces, it->second.size());
      e->set_src(it->second[k].src); // = (it->second[k].src);
@@ -461,11 +461,11 @@ void MapWriter<KeyType, ValueType>::betterWriteToInfinimem(const unsigned buffer
 #elif USE_GRAPHCHI
 //create a normal for loop with unsigned
    // for (typename std::vector<ValueType>::const_iterator vit = it->second.begin(); vit != it->second.end(); ++vit){
-    //fprintf(stderr,"\nTID: %d, writing key: %zu, vector size: %zu ", buffer, it->first, it->second.size());
+   // fprintf(stderr,"\nTID: %d, writing key: %zu, vector size: %zu ", buffer, it->first, it->second.size());
      for (unsigned k = 0; k < it->second.size(); k++){
     //  records[ct].add_values();
       EdgeType* e = records[ct].add_values();
-    //  fprintf(stderr,"\tsrc: %zu, dst: %zu, vrank: , rank:  nNbrs: ", it->second[k].src, it->second[k].dst);//, 1/nVtces, 1/nVtces, it->second.size());
+     // fprintf(stderr,"\tsrc: %zu, dst: %zu, vrank: , rank:  nNbrs: ", it->second[k].src, it->second[k].dst);//, 1/nVtces, 1/nVtces, it->second.size());
      e->set_src(it->second[k].src); // = (it->second[k].src);
      e->set_dst(it->second[k].dst); // = (it->second[k].dst);
      e->set_vrank(it->second[k].vRank); // = (it->second[k].dst);
