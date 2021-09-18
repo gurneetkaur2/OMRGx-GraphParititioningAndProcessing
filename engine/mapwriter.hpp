@@ -416,7 +416,6 @@ void MapWriter<KeyType, ValueType>::writeToInfinimem(const unsigned buffer, cons
 #elif USE_GRAPHCHI
 //create a normal for loop with unsigned
    // fprintf(stderr,"\nTID: %d, writing key: %zu, vector size: %zu ", buffer, it->first, it->second.size());
-   // for (typename std::vector<ValueType>::const_iterator vit = it->second.begin(); vit != it->second.end(); ++vit){
      for (unsigned k = 0; k < it->second.size(); k++){
       EdgeType* e = records[ct].add_values();
     //  fprintf(stderr,"\tsrc: %zu, dst: %zu, vrank: , rank:  nNbrs: ", it->second[k].src, it->second[k].dst);//, 1/nVtces, 1/nVtces, it->second.size());
@@ -425,10 +424,7 @@ void MapWriter<KeyType, ValueType>::writeToInfinimem(const unsigned buffer, cons
      e->set_vrank(it->second[k].vRank); // = (it->second[k].dst);
      e->set_rank(it->second[k].rank); // = (it->second[k].dst);
      e->set_nnbrs(it->second[k].numNeighbors); // = (it->second[k].dst);
- /*    records[ct].values(it->second[k].vRank);
-     records[ct].values(it->second[k].rank);
-     records[ct].values(it->second[k].numNeighbors);
-   */ }
+    }
 #else
     for (typename std::vector<ValueType>::const_iterator vit = it->second.begin(); vit != it->second.end(); ++vit)
       records[ct].add_values(*vit);
@@ -460,7 +456,6 @@ void MapWriter<KeyType, ValueType>::betterWriteToInfinimem(const unsigned buffer
     records[ct].set_value(it->second[0]);
 #elif USE_GRAPHCHI
 //create a normal for loop with unsigned
-   // for (typename std::vector<ValueType>::const_iterator vit = it->second.begin(); vit != it->second.end(); ++vit){
    // fprintf(stderr,"\nTID: %d, writing key: %zu, vector size: %zu ", buffer, it->first, it->second.size());
      for (unsigned k = 0; k < it->second.size(); k++){
     //  records[ct].add_values();
@@ -471,10 +466,7 @@ void MapWriter<KeyType, ValueType>::betterWriteToInfinimem(const unsigned buffer
      e->set_vrank(it->second[k].vRank); // = (it->second[k].dst);
      e->set_rank(it->second[k].rank); // = (it->second[k].dst);
      e->set_nnbrs(it->second[k].numNeighbors); // = (it->second[k].dst);
-    /* records[ct].values(it->second[k].vRank);
-     records[ct].values(it->second[k].rank);
-     records[ct].values(it->second[k].numNeighbors);
-   */ }
+    }
 #else
     for (typename std::vector<ValueType>::const_iterator vit = it->second.begin(); vit != it->second.end(); ++vit)
       records[ct].add_values(*vit);
@@ -732,9 +724,13 @@ void MapWriter<KeyType, ValueType>::cWriteToInfinimem(const unsigned buffer, con
     assert(it->second.size() == 1);
     records[ct].set_value(it->second[0]);
 #elif USE_GRAPHCHI
-    for (typename std::vector<ValueType>::const_iterator vit = it->second.begin(); vit != it->second.end(); ++vit){
-      records[ct].add_values();
-     // records[ct].set_values(*vit);
+     for (unsigned k = 0; k < it->second.size(); k++){
+      EdgeType* e = records[ct].add_values();
+     e->set_src(it->second[k].src); // = (it->second[k].src);
+     e->set_dst(it->second[k].dst); // = (it->second[k].dst);
+     e->set_vrank(it->second[k].vRank); // = (it->second[k].dst);
+     e->set_rank(it->second[k].rank); // = (it->second[k].dst);
+     e->set_nnbrs(it->second[k].numNeighbors); // = (it->second[k].dst);
      }
 #else
     for (typename std::vector<ValueType>::const_iterator vit = it->second.begin(); vit != it->second.end(); ++vit){
