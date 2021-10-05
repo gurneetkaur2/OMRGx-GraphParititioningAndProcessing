@@ -77,10 +77,13 @@ static pthread_barrier_t barWait;
 template <typename KeyType, typename ValueType>
 class MtMetis : public MapReduce<KeyType, ValueType>
 {
+  std::vector<pthread_mutex_t> locks;
   std::vector<unsigned long>* where; // = (nvertices, -1);
   std::vector<unsigned long> gWhere; 
   std::map<unsigned, unsigned>* dTable;
   std::map<unsigned, unsigned >* bndIndMap;
+  std::vector<unsigned>* markMax;
+  std::vector<unsigned>* markMin;
   unsigned long long *totalPECuts;
 
   public:
@@ -96,6 +99,8 @@ class MtMetis : public MapReduce<KeyType, ValueType>
     where = new std::vector<unsigned long>[nparts];
     dTable = new std::map<unsigned, unsigned>[nparts];
     bndIndMap = new std::map<unsigned, unsigned >[nparts]; 
+    markMax = new std::vector<unsigned>[nparts];
+    markMin = new std::vector<unsigned>[nparts];
     totalPECuts = new unsigned long long[nparts];
 
     for (unsigned i = 0; i<nparts; ++i) {
@@ -107,6 +112,11 @@ class MtMetis : public MapReduce<KeyType, ValueType>
     for (unsigned j = 0; j<=nVtces; ++j) {
        gWhere.push_back(-1);
     }
+    for(unsigned i=0; i<this->getCols(); ++i) {
+       pthread_mutex_t mutex;
+       pthread_mutex_init(&mutex, NULL);
+       locks.push_back(mutex);
+   }
   }
 
 unsigned setPartitionId(const unsigned tid)
@@ -201,50 +211,40 @@ unsigned setPartitionId(const unsigned tid)
    last_cgraph = coarsen(tid); //, readEdges[tid]);
 
    initpartition(tid, last_cgraph);
+ 
+   std::map<KeyType, std::vector<ValueType>> cgraph(last_cgraph);
+   unsigned level = ii[tid].levels;
+   do{
+      fprintf(stderr, "\n*****Tid: %d Refining LEVEL: %u *****", tid, level);
+      // refining the coarsest level graph which is in memory and fetching the finer levels from disk later
+      refinepartition(tid, cgraph);
+      level--;
+      //project partition
+      //fetch the finer level graph
+      if(level >0){
+        IdType nItems = gcd[tid][level].cnvtxs;
+  fprintf(stderr,"\nTID: %d, BEFORE Reading cgraph size: %u, startKey: %u ", tid, nItems, gcd[tid][level].startIndex);
+        cgraph = this->diskReadContainer(tid, gcd[tid][level].startIndex, nItems);
+  fprintf(stderr,"\nTID: %d, After Reading cgraph size: %u, startKey: %u ", tid, cgraph.size(), gcd[tid][level].startIndex);
+      //project partition to finer level 
+        IdType k;
+      //for(IdType i=0; i<gcd[tid][level].cnvtxs; i++){
+        for(auto fit = cgraph.begin(); fit != cgraph.end(); fit++){
+          k = cmap[fit->first];
+          where[fit->first] = where[k];
+        }
+      }
+    } while(level > 0);
 
-   refinepartition(tid, last_cgraph);
-    
    assert(false);
    // store the coarsened graph on disk
    
     
-    //fprintf(stderr,"\nShard: %d Waiting at BARRIER ", tid);
-  // pthread_barrier_wait(&(barCompute)); 
-/*
-    IdType count = 0;
-    IdType edgeGCounter = ii[tid].lbEdgeCount;
-   for(unsigned j=0; j < this->getCols(); j++){
-        gcd[tid][j].startEdgeIndex = edgeGCounter;
-        fprintf(stderr, "\nProcessing shard: %u, interval %u: StartVertex: %zu, EndVertex: %zu, SEdgeIndex: %zu, readEdges SRC: %u\n", tid, j, ii[j].lbIndex, ii[j].ubIndex, gcd[tid][j].startEdgeIndex, readEdges[shard][count].src);
-        while(readEdges[shard][count].src >= ii[j].lbIndex && readEdges[shard][count].src < ii[j].ubIndex && count < ii[tid].edgeCount) {
-              count++; // skip over
-              edgeGCounter++;
-        }
-    fprintf(stderr, "After interval: %zu (prev: %zu)\n", readEdges[shard][count].src, readEdges[shard][count-1].src);
-    gcd[tid][j].endEdgeIndex = edgeGCounter;
-    gcd[tid][j].length = gcd[tid][j].endEdgeIndex - gcd[tid][j].startEdgeIndex;
-    fprintf(stderr, "Shard: %u, Interval: %u, Start: %zu, End: %zu, Length: %zu\n", tid, j, gcd[tid][j].startEdgeIndex, gcd[tid][j].endEdgeIndex, gcd[tid][j].length);
-    }
-   
-    fprintf(stderr, "%c---------------------------------\n", '-');
-    // ***************** Done building meta data *****************
-   fprintf(stderr, "Sorting memory shard %u took: %.3lf\n", memoryShard, tmDiff(s, e));
-
-    fprintf(stderr, "Num vertices: %zu, IC: %zu\n", vertices.size(), ii[shard].indexCount); //container.size());
-    // then parallel-process shard -- calculate Pagerank
-                                                          
-     fprintf(stderr, "!!!!!Parallel processing of subgraph for memory shard %u took: %.3lf\n", memoryShard, tmDiff(s, e));
-     fprintf(stderr, "-------------------------%c\n", '-');
-//   pthread_barrier_wait(&(barWait)); 
-    //diskWriteContainer(tid, ii[shard].lbEdgeCount, ii[shard].edgeCount, readEdges[tid].begin(), readEdges[tid].end());
-  */ // totalRecords += readEdges[tid].size() ;
     readEdges[tid].clear();
     return NULL;
   }
 
   std::map<KeyType, std::vector<ValueType>> coarsen(const unsigned tid){ //, std::map<KeyType, std::vector<ValueType>> container){
-
-   //InMemoryContainerIterator<KeyType, ValueType> it;
   // std::map<KeyType, std::vector<ValueType>> container(readEdges[tid]);
    std::map<KeyType, std::vector<ValueType>> cgraph(readEdges[tid]);
   fprintf(stderr,"\nTID: %d, Coarsening graph container size: %u ", tid, cgraph.size());
@@ -425,7 +425,7 @@ std::map<KeyType, std::vector<ValueType>> MATCH_RM(const unsigned tid, std::map<
          if(where[part].at(from) == INIT_VAL)
            where[part].at(from) = part; //bufferId; 
       }
-    fprintf(stderr,"\nTID: %d init partition key: %u where: %u ", tid, to, where[part].at(to));
+   // fprintf(stderr,"\nTID: %d init partition key: %u where: %u ", tid, to, where[part].at(to));
    }
     if(tid ==0){
       this->gCopy(tid, gWhere);
@@ -433,16 +433,43 @@ std::map<KeyType, std::vector<ValueType>> MATCH_RM(const unsigned tid, std::map<
  }
 
  void refinepartition(const unsigned tid, const std::map<KeyType, std::vector<ValueType>> partition){
-    ComputeBECut(tid, gWhere, bndIndMap[tid], partition);
-  //  ComputeGain();
+    fprintf(stderr,"\nTID: %d Refine partition Partition: %u ", tid, partition.size());
+   ComputeBECut(tid, gWhere, bndIndMap[tid], partition);
+   for(unsigned i=0; i < nparts; i++){
+     unsigned hipart = i;
+      for(unsigned j=i+1; j < nparts; j++){
+        unsigned whereMax = j;
+        int maxG = -1;
+        do{        
+          maxG = ComputeGain(tid, hipart, whereMax, markMax[hipart], markMin[hipart], partition);
+        } while(maxG > 0);
+        for(unsigned it=0; it<markMax[hipart].size(); it++){
+           unsigned vtx1 = markMax[hipart].at(it);     //it->first;
+           unsigned vtx2 = markMin[hipart].at(it);
+ //        fprintf(stderr,"\nTID %d whereMax %d vtx1: %d vtx2: %d  ", tid, whereMax, vtx1, vtx2);
+           pthread_mutex_lock(&locks[tid]);
+           gWhere.at(vtx1) = whereMax;
+           gWhere.at(vtx2) = hipart;
+           pthread_mutex_unlock(&locks[tid]);
+// below assignment will not coincide with other threads as all threads will be working on different vtces - no locks
+           where[hipart].at(vtx1) = gWhere[vtx1];
+           where[hipart].at(vtx2) = gWhere[vtx2];
+           where[whereMax].at(vtx1) = gWhere[vtx1];
+           where[whereMax].at(vtx2) = gWhere[vtx2];
+        }
+      }
+   }
  }
 
-void ComputeBECut(const unsigned tid, const std::vector<unsigned long>& where, InMemTable& bndind, const InMemoryContainer<KeyType, ValueType>& partition) {
+void ComputeBECut(const unsigned tid, const std::vector<unsigned long>& gwhere, InMemTable& bndind, const InMemoryContainer<KeyType, ValueType>& partition) {
   IdType src;
+   fprintf(stderr,"\nTID: %d Compute Edgecuts Partition: %u ", tid, partition.size());
   std::vector<unsigned> bndvert;
   for (InMemoryContainerConstIterator<KeyType, ValueType> it = partition.begin(); it != partition.end(); ++it) {
       src = it->first;
+    //  fprintf(stderr,"\nTID: %d src: %d, nbrs: %d dst: ", tid, it->first, it->second.size());
       for(std::vector<IdType>::const_iterator vit = it->second.begin(); vit != it->second.end(); ++vit){
+      //   fprintf(stderr,"%d\t", *vit);
          bndvert.push_back(*vit);
       }
       unsigned nbrs = bndvert.size();
@@ -451,26 +478,117 @@ void ComputeBECut(const unsigned tid, const std::vector<unsigned long>& where, I
        //compute the number of edges cut for every key-values pair in the map
       for(auto it = bndvert.begin(); it != bndvert.end(); ++it) {
          IdType dst = *it;
-         if( where[dst] != INIT_VAL && where[src] != where[dst] ) {
-         //  fprintf(stderr,"\nTID: %d, where[%d]: %d != where[%d]: %d ", tid, src, where[src], dst, where[dst]);
-           totalPECuts[where[dst]]++;
+         if( gwhere[dst] != INIT_VAL && gwhere[src] != gwhere[dst] ) {
+          // fprintf(stderr,"\nTID: %d, where[%d]: %d != where[%d]: %d ", tid, src, gwhere[src], dst, gwhere[dst]);
+           totalPECuts[gwhere[src]]++;
            costE++;
            bndind[dst]++; // = costE ;     
          }
       }
    bndvert.clear();
    //calculate d-values
-   // fprintf(stderr, "\nTID: %d, Calculate DVals ", tid);
    unsigned costI = nbrs - costE;
    unsigned dsrc = costE - costI;      // External - Internal cost
-   dTable[where[src]][src] = dsrc;
+    //fprintf(stderr, "\nTID: %d, Calculate DVals src: %d dval: %d, where[src]: %d", tid, src, dsrc, gWhere[src]);
+   dTable[gwhere[src]][src] = dsrc;
   }
 }
+
+//=======================
+
+unsigned ComputeGain(const unsigned tid, const unsigned hipart, const unsigned whereMax, std::vector<unsigned>& markMax, std::vector<unsigned>& markMin, const InMemoryContainer<KeyType, ValueType>& inMemMap){
+  int maxG = 0;
+  int maxvtx = -1, minvtx = -1;
+  fprintf(stderr, "\nTID: %d, Computing GAIN ", tid);
+
+  for (auto it = dTable[hipart].begin(); it != dTable[hipart].end(); ++it) {
+      unsigned src = it->first;
+      std::vector<unsigned>::iterator it_max = std::find (markMax.begin(), markMax.end(), src);
+      if(it_max != markMax.end()){
+        continue;
+      }
+      else{
+        auto it_map = inMemMap.find(src);
+        if(it_map != inMemMap.end()){
+          if(dTable[whereMax].size() > 0 ){
+            for (auto it_hi = dTable[whereMax].begin(); it_hi != dTable[whereMax].end(); ++it_hi) {
+                unsigned dst = it_hi->first;
+         //  fprintf(stderr, "\nTID: %d, Computing Gain src: %d, dest: %d ", tid, src, dst);
+                bool connect = 0;
+                unsigned dsrc = dTable[hipart][src];
+                unsigned ddst = dTable[whereMax][dst];
+                if(dsrc >= 0 || ddst >= 0){
+                  std::vector<unsigned>::iterator it_min = std::find (markMin.begin(), markMin.end(), dst);
+                  if(it_min != markMin.end()){
+                    continue;
+                  }
+                  else{
+                    if (std::find(it_map->second.begin(), it_map->second.end(), dst) == it_map->second.end()){
+                       connect = 0;
+                    }
+                    else
+                       connect = 1;
+
+                    int currGain = -1;
+                    if(!connect)
+                      currGain = dsrc + ddst;
+                    else
+                      currGain = dsrc + ddst - 2;
+
+                    if(currGain > maxG){ 
+                      maxG = currGain;
+                      maxvtx = src;
+                      minvtx = dst;
+                    }
+                  } //end else
+                } //enf if dsrc>0 condition
+               else  // dsrc, ddst both negative
+                  continue;
+            }// end for loop
+          }// end dtable size check
+        } // end it_map if condition
+      } // end else
+  } // end dtable for loop
+
+  if(maxvtx != -1 && minvtx != -1){
+//fprintf(stderr, "\nTID: %d, MASKING src: %d, dst: %d, Gain: %d ", tid, maxvtx, minvtx, maxG);
+    markMax.push_back(maxvtx);
+    markMin.push_back(minvtx);
+    return maxG;
+  }
+
+ return -1;
+}
+
+//========================
+void clearMemorystructures(const unsigned tid){
+  for(unsigned i=0; i<nparts; i++){
+    bndIndMap[i].clear();
+    markMax[i].clear();
+    markMin[i].clear();
+    dTable[i].clear();
+    totalPECuts[i] = 0;
+  }
+}
+
+
+//========================
+void clearRefineStructures(){
+  markMax->clear();
+  markMin->clear();
+  delete[] totalPECuts;
+  delete[] bndIndMap;
+  delete[] dTable;                  
+  delete[] markMax;                  
+  delete[] markMin;
+  delete[] where;
+}
+
 
 //=========================
  void gCopy(const unsigned tid, std::vector<unsigned long>& gWhere){
     bool first = 1;
-    for(unsigned i=0; i<this->getCols(); ++i){
+    for(unsigned i=0; i<nparts; ++i){
        for(unsigned j=0; j<=nvertices; ++j){
            if(first){  // All Values of first thread will be copied                                                       //         fprintf(stderr,"\nwhere[%d][%d]: %d,", i, j, where[i][j]);
               gWhere[j] = where[i][j];
@@ -489,6 +607,7 @@ void ComputeBECut(const unsigned tid, const std::vector<unsigned long>& where, I
 
     edgeCounter = 0;
     ++iteration;
+    clearMemorystructures(tid);
     if(iteration > this->getIterations()){
        fprintf(stderr, "\nTID: %d, Iteration: %d Complete ", tid, iteration-1);
        don = true;
@@ -503,6 +622,9 @@ void ComputeBECut(const unsigned tid, const std::vector<unsigned long>& where, I
 
   void* afterReduce(const unsigned tid) {
     //readEdges[tid].clear();
+    if(tid == 0){
+      clearRefineStructures();
+    }
     return NULL;
   }
 
