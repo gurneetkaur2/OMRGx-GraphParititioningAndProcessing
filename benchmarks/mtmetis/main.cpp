@@ -79,6 +79,10 @@ class MtMetis : public MapReduce<KeyType, ValueType>
 {
   std::vector<unsigned long>* where; // = (nvertices, -1);
   std::vector<unsigned long> gWhere; 
+  std::map<unsigned, unsigned>* dTable;
+  std::map<unsigned, unsigned >* bndIndMap;
+  unsigned long long *totalPECuts;
+
   public:
 
   void* beforeMap(const unsigned tid) {
@@ -89,11 +93,16 @@ class MtMetis : public MapReduce<KeyType, ValueType>
 
   void writeInit(unsigned nCols, unsigned nVtces){
     readEdges = new std::map<IdType, std::vector<IdType> >[nCols];
-    where = new std::vector<unsigned long>[nCols];
-    for (unsigned i = 0; i<nCols; ++i) {
+    where = new std::vector<unsigned long>[nparts];
+    dTable = new std::map<unsigned, unsigned>[nparts];
+    bndIndMap = new std::map<unsigned, unsigned >[nparts]; 
+    totalPECuts = new unsigned long long[nparts];
+
+    for (unsigned i = 0; i<nparts; ++i) {
         for (unsigned j = 0; j<=nVtces; ++j) {
            where[i].push_back(INIT_VAL);
         }
+        totalPECuts[i] = 0;
     }
     for (unsigned j = 0; j<=nVtces; ++j) {
        gWhere.push_back(-1);
@@ -152,7 +161,6 @@ unsigned setPartitionId(const unsigned tid)
    //(std::chrono::system_clock::now().time_since_epoch().count()) % nvertices;
    // Shuffling our array
    std::shuffle(perm, perm + nvertices, std::default_random_engine(seed));
-
   }
 
   void* reduce(const unsigned tid, const InMemoryContainer<KeyType, ValueType>& container) {
@@ -254,8 +262,11 @@ unsigned setPartitionId(const unsigned tid)
        gcd[tid][level].indexCount = gcd[tid][level].endIndex - gcd[tid][level].startIndex;
        IdType nItems = gcd[tid][level].cnvtxs;
       // it = std::next(readEdges[tid].begin(), nItems);
-  fprintf(stderr,"\nTID: %d, BEFORE writing cgraph size: %u ", tid, cgraph.size());
+  fprintf(stderr,"\nTID: %d, BEFORE writing cgraph size: %u, startKey: %u ", tid, cgraph.size(), gcd[tid][level].startIndex);
        this->diskWriteContainer(tid, gcd[tid][level].startIndex, nItems, cgraph.begin(), cgraph.end());
+       
+       /*InMemoryContainer<KeyType, ValueType> container = this->diskReadContainer(tid, gcd[tid][level].startIndex, nItems);
+  fprintf(stderr,"\nTID: %d, After Reading cgraph size: %u, startKey: %u ", tid, container.size(), gcd[tid][level].startIndex); */
        level++;
     gcd[tid][level].startIndex += nItems;
     ii[tid].levels = level;
@@ -398,30 +409,79 @@ std::map<KeyType, std::vector<ValueType>> MATCH_RM(const unsigned tid, std::map<
 
   void initpartition(const unsigned tid, std::map<KeyType, std::vector<ValueType>> cgraph){
     srand(time(NULL));
-    unsigned part = rand() % nparts;
 
     fprintf(stderr,"\nTID: %d init partition cgraph: %u ", tid, cgraph.size());
     for (auto it= cgraph.begin(); it != cgraph.end(); it++){
        IdType to = it->first;
-       unsigned bufferId = tid % nparts; //hashKey(to) % this->getCols();
-       unsigned part = tid % this->getCols();
+       //unsigned bufferId = tid % nparts; //hashKey(to) % this->getCols();
+       unsigned part = rand() % nparts;
+       //unsigned part = tid % this->getCols();
       if(where[part].at(to) == INIT_VAL)
-         where[part].at(to) = bufferId;
+         where[part].at(to) = part; //bufferId;
       
       for(auto vit=0; vit <it->second.size(); vit++){
         IdType from = it->second[vit];
      //   unsigned whereFrom = hashKey(from) % this->getCols();
          if(where[part].at(from) == INIT_VAL)
-           where[part].at(from) = bufferId; 
+           where[part].at(from) = part; //bufferId; 
       }
-   // fprintf(stderr,"\nTID: %d init partition key: %u where: %u ", tid, to, where[part].at(to));
+    fprintf(stderr,"\nTID: %d init partition key: %u where: %u ", tid, to, where[part].at(to));
    }
-  
+    if(tid ==0){
+      this->gCopy(tid, gWhere);
+    }           
  }
 
- void refinepartition(const unsigned tid, std::map<KeyType, std::vector<ValueType>> partition){
-  
+ void refinepartition(const unsigned tid, const std::map<KeyType, std::vector<ValueType>> partition){
+    ComputeBECut(tid, gWhere, bndIndMap[tid], partition);
+  //  ComputeGain();
+ }
 
+void ComputeBECut(const unsigned tid, const std::vector<unsigned long>& where, InMemTable& bndind, const InMemoryContainer<KeyType, ValueType>& partition) {
+  IdType src;
+  std::vector<unsigned> bndvert;
+  for (InMemoryContainerConstIterator<KeyType, ValueType> it = partition.begin(); it != partition.end(); ++it) {
+      src = it->first;
+      for(std::vector<IdType>::const_iterator vit = it->second.begin(); vit != it->second.end(); ++vit){
+         bndvert.push_back(*vit);
+      }
+      unsigned nbrs = bndvert.size();
+      int countTopK=0;
+      int costE = 0;  //count external cost of edge
+       //compute the number of edges cut for every key-values pair in the map
+      for(auto it = bndvert.begin(); it != bndvert.end(); ++it) {
+         IdType dst = *it;
+         if( where[dst] != INIT_VAL && where[src] != where[dst] ) {
+         //  fprintf(stderr,"\nTID: %d, where[%d]: %d != where[%d]: %d ", tid, src, where[src], dst, where[dst]);
+           totalPECuts[where[dst]]++;
+           costE++;
+           bndind[dst]++; // = costE ;     
+         }
+      }
+   bndvert.clear();
+   //calculate d-values
+   // fprintf(stderr, "\nTID: %d, Calculate DVals ", tid);
+   unsigned costI = nbrs - costE;
+   unsigned dsrc = costE - costI;      // External - Internal cost
+   dTable[where[src]][src] = dsrc;
+  }
+}
+
+//=========================
+ void gCopy(const unsigned tid, std::vector<unsigned long>& gWhere){
+    bool first = 1;
+    for(unsigned i=0; i<this->getCols(); ++i){
+       for(unsigned j=0; j<=nvertices; ++j){
+           if(first){  // All Values of first thread will be copied                                                       //         fprintf(stderr,"\nwhere[%d][%d]: %d,", i, j, where[i][j]);
+              gWhere[j] = where[i][j];
+           }
+                                                                                                                                 else {                                                                                                                   if(where[i][j] != INIT_VAL){
+              gWhere[j] = where[i][j];
+            }                                                                                                                    }
+  //             fprintf(stderr,"\nGWHERE[%d]: %d", j, gWhere[j]);
+       }
+          first = 0;
+    }
  }
 
   void* updateReduceIter(const unsigned tid) {
