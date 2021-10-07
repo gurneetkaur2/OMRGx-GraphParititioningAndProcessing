@@ -415,8 +415,9 @@ void MapWriter<KeyType, ValueType>::writeToInfinimem(const unsigned buffer, cons
     records[ct].set_value(it->second[0]);
 #elif USE_GRAPHCHI
 //create a normal for loop with unsigned
-   // fprintf(stderr,"\nTID: %d, writing key: %zu, vector size: %zu ", buffer, it->first, it->second.size());
-     for (unsigned k = 0; k < it->second.size(); k++){
+    //fprintf(stderr,"\nTID: %d, writing key: %zu, vector size: %zu ", buffer, it->first, it->second.size());
+   // for (typename std::vector<ValueType>::const_iterator vit = it->second.begin(); vit != it->second.end(); ++vit){
+     for (unsigned k = 0; k <= it->second.size(); k++){
       EdgeType* e = records[ct].add_values();
     //  fprintf(stderr,"\tsrc: %zu, dst: %zu, vrank: , rank:  nNbrs: ", it->second[k].src, it->second[k].dst);//, 1/nVtces, 1/nVtces, it->second.size());
      e->set_src(it->second[k].src); // = (it->second[k].src);
@@ -424,7 +425,10 @@ void MapWriter<KeyType, ValueType>::writeToInfinimem(const unsigned buffer, cons
      e->set_vrank(it->second[k].vRank); // = (it->second[k].dst);
      e->set_rank(it->second[k].rank); // = (it->second[k].dst);
      e->set_nnbrs(it->second[k].numNeighbors); // = (it->second[k].dst);
-    }
+ /*    records[ct].values(it->second[k].vRank);
+     records[ct].values(it->second[k].rank);
+     records[ct].values(it->second[k].numNeighbors);
+   */ }
 #else
     for (typename std::vector<ValueType>::const_iterator vit = it->second.begin(); vit != it->second.end(); ++vit)
       records[ct].add_values(*vit);
@@ -456,17 +460,21 @@ void MapWriter<KeyType, ValueType>::betterWriteToInfinimem(const unsigned buffer
     records[ct].set_value(it->second[0]);
 #elif USE_GRAPHCHI
 //create a normal for loop with unsigned
-   // fprintf(stderr,"\nTID: %d, writing key: %zu, vector size: %zu ", buffer, it->first, it->second.size());
+   // for (typename std::vector<ValueType>::const_iterator vit = it->second.begin(); vit != it->second.end(); ++vit){
+    //fprintf(stderr,"\nTID: %d, writing key: %zu, vector size: %zu ", buffer, it->first, it->second.size());
      for (unsigned k = 0; k < it->second.size(); k++){
     //  records[ct].add_values();
       EdgeType* e = records[ct].add_values();
-     // fprintf(stderr,"\tsrc: %zu, dst: %zu, vrank: , rank:  nNbrs: ", it->second[k].src, it->second[k].dst);//, 1/nVtces, 1/nVtces, it->second.size());
+    //  fprintf(stderr,"\tsrc: %zu, dst: %zu, vrank: , rank:  nNbrs: ", it->second[k].src, it->second[k].dst);//, 1/nVtces, 1/nVtces, it->second.size());
      e->set_src(it->second[k].src); // = (it->second[k].src);
      e->set_dst(it->second[k].dst); // = (it->second[k].dst);
      e->set_vrank(it->second[k].vRank); // = (it->second[k].dst);
      e->set_rank(it->second[k].rank); // = (it->second[k].dst);
      e->set_nnbrs(it->second[k].numNeighbors); // = (it->second[k].dst);
-    }
+    /* records[ct].values(it->second[k].vRank);
+     records[ct].values(it->second[k].rank);
+     records[ct].values(it->second[k].numNeighbors);
+   */ }
 #else
     for (typename std::vector<ValueType>::const_iterator vit = it->second.begin(); vit != it->second.end(); ++vit)
       records[ct].add_values(*vit);
@@ -724,13 +732,9 @@ void MapWriter<KeyType, ValueType>::cWriteToInfinimem(const unsigned buffer, con
     assert(it->second.size() == 1);
     records[ct].set_value(it->second[0]);
 #elif USE_GRAPHCHI
-     for (unsigned k = 0; k < it->second.size(); k++){
-      EdgeType* e = records[ct].add_values();
-     e->set_src(it->second[k].src); // = (it->second[k].src);
-     e->set_dst(it->second[k].dst); // = (it->second[k].dst);
-     e->set_vrank(it->second[k].vRank); // = (it->second[k].dst);
-     e->set_rank(it->second[k].rank); // = (it->second[k].dst);
-     e->set_nnbrs(it->second[k].numNeighbors); // = (it->second[k].dst);
+    for (typename std::vector<ValueType>::const_iterator vit = it->second.begin(); vit != it->second.end(); ++vit){
+      records[ct].add_values();
+     // records[ct].set_values(*vit);
      }
 #else
     for (typename std::vector<ValueType>::const_iterator vit = it->second.begin(); vit != it->second.end(); ++vit){
@@ -799,47 +803,5 @@ bool MapWriter<KeyType, ValueType>::cDiskRead(const unsigned tid) {
   infinimem_cread_times[tid] += getTimer();
   delete[] parts;
   return ret;
-}
-
-//========================= 
-template <typename KeyType, typename ValueType>
-InMemoryContainer<KeyType, ValueType>& MapWriter<KeyType, ValueType>::diskReadContainer(const unsigned tid, const IdType startKey, unsigned noItems) {
-
-  InMemoryContainer<KeyType, ValueType> container;
-  infinimem_cread_times[tid] -= getTimer();
-  unsigned partbound = noItems; 
-  RecordType* parts = new RecordType[partbound];
-
-    if (partbound > 0 && partbound < batchSize)
-      cio->file_get_batch(tid, startKey, partbound, parts);
-
-    for (unsigned i = 0; i < partbound; i++) {
-      container[parts[i].key()];
-//      fprintf(stderr,"\nREFINE- TID: %d, Key: %d\t Values: ", tid, parts[i].rank()); 
-
-#ifdef USE_ONE_PHASE_IO
-      container[parts[i].key()].push_back(parts[i].value());
-#elif USE_GRAPHCHI
-      for (unsigned k = 0; k < parts[i].values_size(); k++){
-        Edge b;
-        b.src = parts[i].values(k).src();
-        b.dst = parts[i].values(k).dst();
-        b.vRank = parts[i].values(k).vrank();
-        b.rank = parts[i].values(k).rank();
-        b.numNeighbors = parts[i].values(k).nnbrs();
-        container[parts[i].key()].push_back(parts[i].values());
-      }
-#else
-      for (unsigned k = 0; k < parts[i].values_size(); k++){
-        container[parts[i].key()].push_back(parts[i].values(k));
-   //        fprintf(stderr,"\nREFINE - key: %d value: %d\n", parts[i].key(), parts[i].values_size());
-     }
-#endif
-   }
-   fprintf(stderr,"\nREFINE- tid: %d  BATCHSIZE: %d, Map size: %d \n", tid, batchSize, container.size());
-
-  infinimem_cread_times[tid] += getTimer();
-  delete[] parts;
-  return container;
 }
 //========================= 

@@ -72,6 +72,7 @@ class MapWriter
     void writeToInfinimem(const unsigned buffer, const IdType startKey, unsigned nItems, const InMemoryContainer<KeyType, ValueType>& inMemMap); //GK
     bool read(const unsigned tid);
     InMemoryContainer<KeyType, ValueType>& cRead(const unsigned tid);
+    InMemoryContainer<KeyType, ValueType>& diskReadContainer(const unsigned tid, const IdType startKey, unsigned noItems);
     void cWrite(const unsigned tid);
     void cWrite(const unsigned tid, unsigned noItems, InMemoryContainerConstIterator<KeyType, ValueType> end);
     void diskWriteContainer(const unsigned tid, const IdType startKey, unsigned noItems, InMemoryContainerConstIterator<KeyType, ValueType> begin, InMemoryContainerConstIterator<KeyType, ValueType> end);

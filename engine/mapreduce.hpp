@@ -453,10 +453,21 @@ void MapReduce<KeyType, ValueType>::cWrite(const unsigned tid) {
   writer.cWrite(tid);
 }
 
+template <typename KeyType, typename ValueType>
+void MapReduce<KeyType, ValueType>::diskWriteContainer(const unsigned tid, const IdType startKey, unsigned noItems, InMemoryContainerConstIterator<KeyType, ValueType> begin, InMemoryContainerConstIterator<KeyType, ValueType> end) {
+  writer.diskWriteContainer(tid, startKey, noItems, begin, end);
+}
+
 //--------------------------------------------
 template <typename KeyType, typename ValueType>
 InMemoryContainer<KeyType, ValueType>& MapReduce<KeyType, ValueType>::cRead(const unsigned tid) {
   return writer.cRead(tid);
+}
+
+//--------------------------------------------
+template <typename KeyType, typename ValueType>
+InMemoryContainer<KeyType, ValueType>& MapReduce<KeyType, ValueType>::diskReadContainer(const unsigned tid, const IdType startKey, unsigned noItems) {
+  return writer.diskReadContainer(tid, startKey, noItems);
 }
 
 //--------------------------------------------
