@@ -76,7 +76,8 @@ class MapReduce
     bool read(const unsigned tid);
     void readInit(const unsigned buffer);
     InMemoryContainer<KeyType, ValueType>& cRead(const unsigned tid);
-    InMemoryContainer<KeyType, ValueType>& diskReadContainer(const unsigned tid, const IdType startKey, unsigned noItems);
+    //InMemoryContainer<KeyType, ValueType>& 
+    std::map<KeyType, std::vector<ValueType> > diskReadContainer(const unsigned tid, const IdType startKey, unsigned noItems);
     void diskWriteContainer(const unsigned tid, const IdType startKey, unsigned noItems, InMemoryContainerConstIterator<KeyType, ValueType> begin, InMemoryContainerConstIterator<KeyType, ValueType> end); 
     void cWrite(const unsigned tid);
 //, unsigned noItems, InMemoryContainerConstIterator<KeyType, ValueType> end);

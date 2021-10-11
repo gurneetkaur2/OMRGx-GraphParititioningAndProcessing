@@ -16,14 +16,18 @@
 #include <google/malloc_extension.h>
 //#include <bits/stdc++.h>
 #include <random>       // std::default_random_engine
+#include<mutex>
 
 #define UNMATCHED  -1
 #define COARSEN_FRACTION  0.85  /* Node reduction between succesive coarsening levels */
 #define MAX_UINT (ULLONG_MAX)
 #define INIT_VAL 5000
+#define gk_max(a, b) ((a) >= (b) ? (a) : (b))
+
 static int nvertices;
 static int nmappers;
 static int nparts;
+static std::string outputPrefix = "";
 
 //EdgeList* edgeLists = NULL;
 IdType totalEdges = 0;
@@ -73,11 +77,13 @@ __thread IdType *cmap = NULL;
   std::map<IdType, std::vector<IdType> >* readEdges;
 static pthread_barrier_t barCompute;
 static pthread_barrier_t barWait;
+std::mutex m;
 
 template <typename KeyType, typename ValueType>
 class MtMetis : public MapReduce<KeyType, ValueType>
 {
   std::vector<pthread_mutex_t> locks;
+ // std::vector<std::mutex> mlocks;
   std::vector<unsigned long>* where; // = (nvertices, -1);
   std::vector<unsigned long> gWhere; 
   std::map<unsigned, unsigned>* dTable;
@@ -123,7 +129,7 @@ unsigned setPartitionId(const unsigned tid)
   {
     unsigned nCols = this->getCols();
     //fprintf(stderr,"\nTID: %d writing to partition: %d " , tid, tid % nCols);
-   return tid % nCols;
+   return -1;// tid % nCols;
   }
 
   void* map(const unsigned tid, const unsigned fileId, const std::string& input, const unsigned nbufferId, const unsigned hiDegree)
@@ -213,33 +219,43 @@ unsigned setPartitionId(const unsigned tid)
    initpartition(tid, last_cgraph);
  
    std::map<KeyType, std::vector<ValueType>> cgraph(last_cgraph);
+   std::map<KeyType, std::vector<ValueType>> fgraph;
    unsigned level = ii[tid].levels;
    do{
-      fprintf(stderr, "\n*****Tid: %d Refining LEVEL: %u *****", tid, level);
+      fprintf(stderr, "\n*****Tid: %d Refining LEVEL: %u *****\n", tid, level);
       // refining the coarsest level graph which is in memory and fetching the finer levels from disk later
       refinepartition(tid, cgraph);
-      level--;
-      //project partition
-      //fetch the finer level graph
-      if(level >0){
-        IdType nItems = gcd[tid][level].cnvtxs;
-  fprintf(stderr,"\nTID: %d, BEFORE Reading cgraph size: %u, startKey: %u ", tid, nItems, gcd[tid][level].startIndex);
-        cgraph = this->diskReadContainer(tid, gcd[tid][level].startIndex, nItems);
-  fprintf(stderr,"\nTID: %d, After Reading cgraph size: %u, startKey: %u ", tid, cgraph.size(), gcd[tid][level].startIndex);
+    fprintf(stderr,"\nTID: %d Waiting after refine ", tid);
+      pthread_barrier_wait(&(barWait));
+       if(tid ==0){
+          this->gCopy(tid, gWhere);
+       }
       //project partition to finer level 
         IdType k;
       //for(IdType i=0; i<gcd[tid][level].cnvtxs; i++){
+    fprintf(stderr,"\nTID: %d Projecting partition ", tid);
         for(auto fit = cgraph.begin(); fit != cgraph.end(); fit++){
           k = cmap[fit->first];
-          where[fit->first] = where[k];
+          //fprintf(stderr,"\ntid: %d fit->first: %u, k: %u, gWhere: %d ", tid, fit->first, k, gWhere[fit->first]); 
+          pthread_mutex_lock(&locks[tid]);
+          gWhere[fit->first] = gWhere[k];
+          pthread_mutex_unlock(&locks[tid]);
         }
+      level--;
+      //fetch the finer level graph
+      if(level >0){
+        IdType nItems = gcd[tid][level].cnvtxs;
+  fprintf(stderr,"\nTID: %d, BEFORE Reading cgraph size: %u, startKey: %u, level: %d ", tid, nItems, gcd[tid][level].startIndex, level);
+        fgraph = this->diskReadContainer(tid, gcd[tid][level].startIndex, nItems);
+  fprintf(stderr,"\nTID: %d, After Reading fgraph size: %u, startKey: %u ", tid, fgraph.size(), gcd[tid][level].startIndex);
+        cgraph = fgraph;
       }
     } while(level > 0);
 
-   assert(false);
+   //assert(false);
    // store the coarsened graph on disk
    
-    
+   fprintf(stderr,"\n\n****tid: %d Finished refining *** ", tid); 
     readEdges[tid].clear();
     return NULL;
   }
@@ -248,12 +264,12 @@ unsigned setPartitionId(const unsigned tid)
   // std::map<KeyType, std::vector<ValueType>> container(readEdges[tid]);
    std::map<KeyType, std::vector<ValueType>> cgraph(readEdges[tid]);
   fprintf(stderr,"\nTID: %d, Coarsening graph container size: %u ", tid, cgraph.size());
-
+   IdType cnvtxs = 0; IdType cnedges;
    unsigned nvtxs = ii[tid].indexCount;
    unsigned nedges = ii[tid].edgeCount;
    IdType edgeCCounter = ii[tid].lbEdgeCount; // start key
    unsigned level = 0;
-   unsigned CoarsenTo = 4; //std::max((nvtxs)/(20*log2(nparts)), 30*(nparts));
+   unsigned CoarsenTo = gk_max((nvtxs)/(20*std::log2(nparts)), 30*(nparts));
 //   for(unsigned j=0; j < level; j++){
     gcd[tid][level].startIndex = 0;
    do{
@@ -261,19 +277,25 @@ unsigned setPartitionId(const unsigned tid)
        //  number of vertices in coarsened graph
        gcd[tid][level].indexCount = gcd[tid][level].endIndex - gcd[tid][level].startIndex;
        IdType nItems = gcd[tid][level].cnvtxs;
+       if(cnvtxs != gcd[tid][level].cnvtxs)
+          cnvtxs = gcd[tid][level].cnvtxs;
+       else
+         break;
+       cnedges = gcd[tid][level].cnedges;
       // it = std::next(readEdges[tid].begin(), nItems);
-  fprintf(stderr,"\nTID: %d, BEFORE writing cgraph size: %u, startKey: %u ", tid, cgraph.size(), gcd[tid][level].startIndex);
+  fprintf(stderr,"\nTID: %d, BEFORE writing cgraph size: %u, startKey: %u level: %d", tid, cgraph.size(), gcd[tid][level].startIndex, level);
        this->diskWriteContainer(tid, gcd[tid][level].startIndex, nItems, cgraph.begin(), cgraph.end());
        
        /*InMemoryContainer<KeyType, ValueType> container = this->diskReadContainer(tid, gcd[tid][level].startIndex, nItems);
   fprintf(stderr,"\nTID: %d, After Reading cgraph size: %u, startKey: %u ", tid, container.size(), gcd[tid][level].startIndex); */
        level++;
-    gcd[tid][level].startIndex += nItems;
+    gcd[tid][level].startIndex = nItems;
     ii[tid].levels = level;
+    fprintf(stderr,"\nTID: %d cnvtxs: %d cnedges: %d CoarsenTo: %d Fraction: %d ", tid, cnvtxs, cnedges, CoarsenTo, COARSEN_FRACTION*cnvtxs);
    }
-      while (gcd[tid][level].cnvtxs > CoarsenTo &&
-             gcd[tid][level].cnvtxs < COARSEN_FRACTION*gcd[tid][level-1].indexCount && //graph->finer->nvtxs &&
-             nedges > (gcd[tid][level].cnvtxs)/2);  
+      while (gcd[tid][level-1].cnvtxs > CoarsenTo &&
+            // gcd[tid][level-1].cnvtxs < COARSEN_FRACTION*cnvtxs && //graph->finer->nvtxs &&
+             gcd[tid][level-1].cnedges > (gcd[tid][level-1].cnvtxs)/2);  
 
     // return last coarses graph
     return cgraph;
@@ -338,7 +360,7 @@ std::map<KeyType, std::vector<ValueType>> MATCH_RM(const unsigned tid, std::map<
      //fprintf(stderr,"\nTID: %d, FInal container element i: %u cmap: %u match: %u ", tid, fit->first, cmap[fit->first], match[fit->first]);
   }
  cgraph = CreateCoarseGraph(tid, container, cnvtxs, cmap, level);
- fprintf(stderr,"\nTID: %d coarser vertices: %u ", tid, cnvtxs);
+ //fprintf(stderr,"\nTID: %d coarser vertices: %u ", tid, cnvtxs);
  gcd[tid][level].cnvtxs = cgraph.size();
  return cgraph;
 }
@@ -440,17 +462,19 @@ std::map<KeyType, std::vector<ValueType>> MATCH_RM(const unsigned tid, std::map<
       for(unsigned j=i+1; j < nparts; j++){
         unsigned whereMax = j;
         int maxG = -1;
+        fprintf(stderr, "\nTID: %d, Computing GAIN hipart: %d, whereMax: %d ", tid, hipart, whereMax);
         do{        
           maxG = ComputeGain(tid, hipart, whereMax, markMax[hipart], markMin[hipart], partition);
         } while(maxG > 0);
         for(unsigned it=0; it<markMax[hipart].size(); it++){
            unsigned vtx1 = markMax[hipart].at(it);     //it->first;
            unsigned vtx2 = markMin[hipart].at(it);
- //        fprintf(stderr,"\nTID %d whereMax %d vtx1: %d vtx2: %d  ", tid, whereMax, vtx1, vtx2);
-           pthread_mutex_lock(&locks[tid]);
+         //fprintf(stderr,"\nTID %d whereMax %d vtx1: %d vtx2: %d  ", tid, whereMax, vtx1, vtx2);
+    //       pthread_mutex_lock(&locks[tid]);
+    auto my_lock = std::unique_lock<std::mutex>(m);
            gWhere.at(vtx1) = whereMax;
            gWhere.at(vtx2) = hipart;
-           pthread_mutex_unlock(&locks[tid]);
+      //     pthread_mutex_unlock(&locks[tid]);
 // below assignment will not coincide with other threads as all threads will be working on different vtces - no locks
            where[hipart].at(vtx1) = gWhere[vtx1];
            where[hipart].at(vtx2) = gWhere[vtx2];
@@ -459,6 +483,7 @@ std::map<KeyType, std::vector<ValueType>> MATCH_RM(const unsigned tid, std::map<
         }
       }
    }
+    fprintf(stderr,"\nTID: %d FINISHED Refine partition ", tid);
  }
 
 void ComputeBECut(const unsigned tid, const std::vector<unsigned long>& gwhere, InMemTable& bndind, const InMemoryContainer<KeyType, ValueType>& partition) {
@@ -467,11 +492,12 @@ void ComputeBECut(const unsigned tid, const std::vector<unsigned long>& gwhere, 
   std::vector<unsigned> bndvert;
   for (InMemoryContainerConstIterator<KeyType, ValueType> it = partition.begin(); it != partition.end(); ++it) {
       src = it->first;
-    //  fprintf(stderr,"\nTID: %d src: %d, nbrs: %d dst: ", tid, it->first, it->second.size());
+      //fprintf(stderr,"\nTID: %d src: %d, nbrs: %d dst: ", tid, it->first, it->second.size());
       for(std::vector<IdType>::const_iterator vit = it->second.begin(); vit != it->second.end(); ++vit){
       //   fprintf(stderr,"%d\t", *vit);
          bndvert.push_back(*vit);
       }
+    // fprintf(stderr,"\nTid: %d bndvert size: %d ", tid, bndvert.size());
       unsigned nbrs = bndvert.size();
       int countTopK=0;
       int costE = 0;  //count external cost of edge
@@ -487,11 +513,17 @@ void ComputeBECut(const unsigned tid, const std::vector<unsigned long>& gwhere, 
       }
    bndvert.clear();
    //calculate d-values
-   unsigned costI = nbrs - costE;
-   unsigned dsrc = costE - costI;      // External - Internal cost
-    //fprintf(stderr, "\nTID: %d, Calculate DVals src: %d dval: %d, where[src]: %d", tid, src, dsrc, gWhere[src]);
-   dTable[gwhere[src]][src] = dsrc;
+  if( gwhere[src] != INIT_VAL){ //
+    unsigned costI = nbrs - costE;
+    unsigned dsrc = costE - costI;      // External - Internal cost
+    //fprintf(stderr, "\nTID: %d, Calculate DVals src: %d dval: %d, where[src]: %d", tid, src, dsrc, gwhere[src]);
+ //   pthread_mutex_lock(&locks[tid]);
+  //  auto my_lock = std::unique_lock<std::mutex>(m);
+    dTable[gwhere[src]][src] = dsrc;
+//    pthread_mutex_unlock(&locks[tid]);
+   }
   }
+  fprintf(stderr, "\nTID: %d, Finished Computing EC ", tid);
 }
 
 //=======================
@@ -499,7 +531,7 @@ void ComputeBECut(const unsigned tid, const std::vector<unsigned long>& gwhere, 
 unsigned ComputeGain(const unsigned tid, const unsigned hipart, const unsigned whereMax, std::vector<unsigned>& markMax, std::vector<unsigned>& markMin, const InMemoryContainer<KeyType, ValueType>& inMemMap){
   int maxG = 0;
   int maxvtx = -1, minvtx = -1;
-  fprintf(stderr, "\nTID: %d, Computing GAIN ", tid);
+  //fprintf(stderr, "\nTID: %d, Computing GAIN ", tid);
 
   for (auto it = dTable[hipart].begin(); it != dTable[hipart].end(); ++it) {
       unsigned src = it->first;
@@ -552,11 +584,12 @@ unsigned ComputeGain(const unsigned tid, const unsigned hipart, const unsigned w
 
   if(maxvtx != -1 && minvtx != -1){
 //fprintf(stderr, "\nTID: %d, MASKING src: %d, dst: %d, Gain: %d ", tid, maxvtx, minvtx, maxG);
+ // pthread_mutex_lock(&locks[tid]);
     markMax.push_back(maxvtx);
     markMin.push_back(minvtx);
+ //   pthread_mutex_unlock(&locks[tid]);
     return maxG;
   }
-
  return -1;
 }
 
@@ -582,6 +615,8 @@ void clearRefineStructures(){
   delete[] markMax;                  
   delete[] markMin;
   delete[] where;
+  pthread_barrier_destroy(&barWait);
+  pthread_barrier_destroy(&barCompute);
 }
 
 
@@ -602,6 +637,21 @@ void clearRefineStructures(){
     }
  }
 
+//============================
+  void printParts(const unsigned tid, std::string fileName) {
+  ofile.open(fileName);
+  assert(ofile.is_open());
+  for(unsigned p = 0; p<nparts; p++){
+    for(unsigned i = 0; i <= nvertices; ++i){
+      if(gWhere[i] != -1 && (gWhere[i] == p){ // || gWhere[i] == tid % nparts)){
+        ofile<<i << "\t" << gWhere[i]<< std::endl;
+      }
+    }
+  }
+  ofile.close();
+  }
+
+//=======================
   void* updateReduceIter(const unsigned tid) {
     fprintf(stderr,"\nTID: %d Updating reduce Iteration ", tid);
 
@@ -625,6 +675,10 @@ void clearRefineStructures(){
     if(tid == 0){
       clearRefineStructures();
     }
+
+    std::string fileName = outputPrefix + std::to_string(tid);
+    printParts(tid, fileName.c_str());
+
     return NULL;
   }
 
@@ -642,9 +696,9 @@ int main(int argc, char** argv)
 {
   MtMetis<IdType, IdType> mt;
 
-  if (argc < 8)
+  if (argc < 11)
   {
-  std::cout << "Usage: " << argv[0] << " <folderpath> <gb> <nmappers> <nreducers> <batchsize> <kitems> <optional - nvertices> <optional - iters>" << std::endl;
+  std::cout << "Usage: " << argv[0] << " <folderpath> <gb> <nmappers> <nreducers> <batchsize> <kitems> <nvertices> <iters> <hiDegree> <num parts> <optional - partition output prefix>"<< std::endl;
 
   return 0;
 }
@@ -668,6 +722,7 @@ if(atoi(argv[10]) > 0)
 else
    nparts = 2;
 
+outputPrefix = argv[11];
 #else
 nvertices = -1;
 niterations = 1;

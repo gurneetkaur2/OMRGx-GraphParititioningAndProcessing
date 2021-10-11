@@ -683,10 +683,11 @@ void MapWriter<KeyType, ValueType>::cWrite(const unsigned tid) {
 template <typename KeyType, typename ValueType>
 void MapWriter<KeyType, ValueType>::diskWriteContainer(const unsigned tid, const IdType startKey, unsigned noItems, InMemoryContainerConstIterator<KeyType, ValueType> begin, InMemoryContainerConstIterator<KeyType, ValueType> end) {
   unsigned buffer = tid % nCols;
-// fprintf(stderr, "\nThread %d cWrite to partition %d noItems: %d \n", tid, buffer, noItems); 
+// fprintf(stderr, "\nThread %d cWrite to startKey: %d noItems: %d \n", tid, startKey, noItems); 
     
   infinimem_cwrite_times[tid] -= getTimer();
     pthread_mutex_lock(&locks[buffer]);
+// fprintf(stderr, "\nThread %d cWrite going to WRITE \n", tid); 
   cWriteToInfinimem(buffer, startKey, noItems, begin, end);
     pthread_mutex_unlock(&locks[buffer]);
     infinimem_cwrite_times[tid] += getTimer();
@@ -700,7 +701,7 @@ template <typename KeyType, typename ValueType>
 void MapWriter<KeyType, ValueType>::cWrite(const unsigned tid, unsigned noItems, InMemoryContainerConstIterator<KeyType, ValueType> end) {
   
   unsigned buffer = tid % nCols;
-// fprintf(stderr, "\nThread %d cWrite to partition %d noItems: %d \n", tid, buffer, noItems); 
+ //fprintf(stderr, "\nThread %d cWrite to partition %d noItems: %d \n", tid, buffer, noItems); 
     
   infinimem_cwrite_times[tid] -= getTimer();
     pthread_mutex_lock(&locks[buffer]);
@@ -716,9 +717,10 @@ void MapWriter<KeyType, ValueType>::cWriteToInfinimem(const unsigned buffer, con
   RecordType* records = new RecordType[noItems];
   unsigned ct = 0;
 
+// fprintf(stderr, "\nThread %d INSIDE CWTI cWrite startKey: %d noItems: %d \n", buffer, startKey, noItems); 
   for (InMemoryContainerConstIterator<KeyType, ValueType> it = begin; it != end; ++it) {
      records[ct].set_key(it->first);
-//      fprintf(stderr,"\n BWTI- TID: %d, startKey: %d, Key: %d\t, Values: ", buffer, startKey, it->first); 
+     //fprintf(stderr,"\n CWTI- TID: %d, startKey: %d, Key: %d\t, Values: ", buffer, startKey, it->first); 
 
 #ifdef USE_ONE_PHASE_IO
     assert(it->second.size() == 1);
@@ -735,7 +737,7 @@ void MapWriter<KeyType, ValueType>::cWriteToInfinimem(const unsigned buffer, con
 #else
     for (typename std::vector<ValueType>::const_iterator vit = it->second.begin(); vit != it->second.end(); ++vit){
       records[ct].add_values(*vit);
-    //  fprintf(stderr,"%d\t", *vit); 
+   //   fprintf(stderr,"%d\t", *vit); 
       }
 #endif
       ++ct;
@@ -803,7 +805,8 @@ bool MapWriter<KeyType, ValueType>::cDiskRead(const unsigned tid) {
 
 //========================= 
 template <typename KeyType, typename ValueType>
-InMemoryContainer<KeyType, ValueType>& MapWriter<KeyType, ValueType>::diskReadContainer(const unsigned tid, const IdType startKey, unsigned noItems) {
+//InMemoryContainer<KeyType, ValueType>& 
+std::map<KeyType, std::vector<ValueType> > MapWriter<KeyType, ValueType>::diskReadContainer(const unsigned tid, const IdType startKey, unsigned noItems) {
 
   InMemoryContainer<KeyType, ValueType> container;
   infinimem_cread_times[tid] -= getTimer();

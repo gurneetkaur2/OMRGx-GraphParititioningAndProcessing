@@ -466,7 +466,8 @@ InMemoryContainer<KeyType, ValueType>& MapReduce<KeyType, ValueType>::cRead(cons
 
 //--------------------------------------------
 template <typename KeyType, typename ValueType>
-InMemoryContainer<KeyType, ValueType>& MapReduce<KeyType, ValueType>::diskReadContainer(const unsigned tid, const IdType startKey, unsigned noItems) {
+//InMemoryContainer<KeyType, ValueType>& 
+std::map<KeyType, std::vector<ValueType> > MapReduce<KeyType, ValueType>::diskReadContainer(const unsigned tid, const IdType startKey, unsigned noItems) {
   return writer.diskReadContainer(tid, startKey, noItems);
 }
 
