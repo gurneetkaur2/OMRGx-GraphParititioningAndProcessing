@@ -78,14 +78,13 @@ void MapWriter<KeyType, ValueType>::releaseMapStructures()
   for (unsigned i = 0; i < nCols; i++)
     pthread_mutex_destroy(&locks[i]);
 
-  //AK : Changed the counter to locks.size instead because it was giving seg- faults
-  for (unsigned i = 0; i < nRows * nCols; i++) {
+ /* for (unsigned i = 0; i < nRows * nCols; i++) {
     outBufMap[i].clear();
-  }
+  }*/
 
   //delete[] cTotalKeys;
   delete[] nItems;
-  delete[] outBufMap;
+ // delete[] outBufMap;
 }
 //-------------------------------------------------
   template <typename KeyType, typename ValueType>
@@ -95,7 +94,7 @@ void MapWriter<KeyType, ValueType>::shutdown()
   delete cio;
   //AK : segfault clear
   //	outBufMap->clear();
-  readBufMap->clear();
+  //readBufMap->clear();
   for (unsigned i = 0; i < nCols; i++){
      //  readBufMap[i].clear();
        readNextInBatch[i].clear();
@@ -110,12 +109,10 @@ void MapWriter<KeyType, ValueType>::shutdown()
   delete[] totalKeysInFile;
   //delete[] nReadKeys;
   delete[] totalCombined;
-  delete[] readBufMap;
+ // delete[] readBufMap;
   delete[] lookUpTable;
   delete[] fetchBatchIds;
   delete[] readNextInBatch;
- // delete[] prev;
- // delete[] next;
   delete[] batchesCompleted;
   delete[] keysPerBatch;
 }
