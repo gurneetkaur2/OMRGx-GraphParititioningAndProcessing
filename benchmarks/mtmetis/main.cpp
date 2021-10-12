@@ -91,6 +91,7 @@ class MtMetis : public MapReduce<KeyType, ValueType>
   std::vector<unsigned>* markMax;
   std::vector<unsigned>* markMin;
   unsigned long long *totalPECuts;
+  static thread_local std::ofstream ofile;
 
   public:
 
@@ -643,7 +644,7 @@ void clearRefineStructures(){
   assert(ofile.is_open());
   for(unsigned p = 0; p<nparts; p++){
     for(unsigned i = 0; i <= nvertices; ++i){
-      if(gWhere[i] != -1 && (gWhere[i] == p){ // || gWhere[i] == tid % nparts)){
+      if(gWhere[i] != -1 && gWhere[i] == p){ // || gWhere[i] == tid % nparts)){
         ofile<<i << "\t" << gWhere[i]<< std::endl;
       }
     }
@@ -657,7 +658,9 @@ void clearRefineStructures(){
 
     edgeCounter = 0;
     ++iteration;
-    clearMemorystructures(tid);
+    if(tid==0)
+      clearMemorystructures(tid);
+
     if(iteration > this->getIterations()){
        fprintf(stderr, "\nTID: %d, Iteration: %d Complete ", tid, iteration-1);
        don = true;
@@ -676,8 +679,8 @@ void clearRefineStructures(){
       clearRefineStructures();
     }
 
-    std::string fileName = outputPrefix + std::to_string(tid);
-    printParts(tid, fileName.c_str());
+  //  std::string fileName = outputPrefix + std::to_string(tid);
+ //   printParts(tid, fileName.c_str());
 
     return NULL;
   }
@@ -690,6 +693,9 @@ void* combine(const KeyType& key, std::vector<ValueType>& to, const std::vector<
   to.insert(to.end(), from.begin(), from.end());
   return NULL;
 }
+
+template <typename KeyType, typename ValueType>
+thread_local std::ofstream MtMetis<KeyType, ValueType>::ofile;
 
 //-------------------------------------------------
 int main(int argc, char** argv)
