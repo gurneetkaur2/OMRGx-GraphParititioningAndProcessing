@@ -374,7 +374,7 @@ void MapReduce<KeyType, ValueType>::init(const std::string input, const unsigned
   nIterations = iterations;
 
   getListOfFiles(inputFolder, &fileList);
-  reduceFiles(inputFolder, &fileList, gb);
+  //reduceFiles(inputFolder, &fileList, gb);
   std::cout << "Number of files: " << fileList.size() << std::endl;
 
   if(fileList.size() == 0) {
