@@ -141,7 +141,7 @@ unsigned setPartitionId(const unsigned tid)
       e.numNeighbors = 0;
       
      // fprintf(stderr,"\nInside before reduce ************ Container size: %d ", this->getContainerSize());
-      for (unsigned j = 0; j<nvertices; ++j) {
+      for (unsigned j = 0; j<=nvertices; ++j) {
           readEdges[tid].push_back(e);
   //        ssIndex[tid][j] = 0;
         }
@@ -169,13 +169,13 @@ unsigned setPartitionId(const unsigned tid)
     IdType v = it_first->second[0].dst;
     //fprintf(stderr,"\nSHARD: %u, CONTAINER elements to SHIVEL LowerBound: %d ", tid, ii[shard].lbIndex);
     for(auto it = container.begin(); it != container.end(); it++){
-    //     fprintf(stderr,"\nSHARD: %u, CONTAINER elements Key: %u, values: ", tid, it->first);
+        // fprintf(stderr,"\nSHARD: %u, CONTAINER elements Key: %u, value size: %d, values: ", tid, it->first, it->second.size());
       for(int k=0; k<it->second.size(); k++) {
            Edge e = it->second[k];
            v = e.dst;
-           readEdges[shard].at(id++) = it->second[k];
+        //fprintf(stderr,"\nSHARD: %d ES elements dst: %zu src: %zu ", shard, it->second[k].dst, it->second[k].src);
+           readEdges[shard][id++] = (it->second[k]);
          // fprintf(stderr,"\t src:%zu dst %zu ", e.src, e.dst);
-  //      fprintf(stderr,"\nSHARD: %d ES elements dst: %zu src: %zu ", shard, it->second[k].dst, it->second[k].src);
          vertices.push_back(&e);
         while(k<it->second.size() && v==e.dst) k++;  //TODO: edgecount should be buffer count
          edgeCounter++;
