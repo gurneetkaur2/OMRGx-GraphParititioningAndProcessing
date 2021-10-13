@@ -87,7 +87,7 @@ class GraphChi : public MapReduce<KeyType, ValueType>
       prOutput = new std::vector<IdType>[nCols];
       edgeCounter = 0;
       iteration = 0;
-      fprintf(stderr,"\nInside writeINIT ************NOT EMPTY Vertices: %d ", nvertices);
+      efprintf(stderr,"\nInside writeINIT ************NOT EMPTY Vertices: %d ", nvertices);
  /*    for(unsigned i=0; i<nCols; i++){ 
         for(IdType j=0; j<=nVtces; j++) 
           prOutput[i][j] = -1;
