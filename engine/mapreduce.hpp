@@ -367,7 +367,6 @@ void MapReduce<KeyType, ValueType>::init(const std::string input, const unsigned
   nReducers = reducers;
   nVertices = vertices;
   hiDegree = hidegree;
-  batchSize = bSize;
   kBItems = kItems;
   gb = g;
   //unsigned int nIterations = UINT_MAX;
@@ -384,7 +383,12 @@ void MapReduce<KeyType, ValueType>::init(const std::string input, const unsigned
 
   printFileNames(inputFolder, &fileList, gb);
   std::cout << "Dataset size: " << gb << " GB" << std::endl;
-
+#ifdef USE_GOMR
+  unsigned wload = bSize / (nMappers * nReducers);
+  batchSize = wload + bSize % (nMappers * nReducers) ;
+#else
+  batchSize = bSize; 
+#endif
   //setThreads(std::min(static_cast<unsigned>(fileList.size()), nThreads));
   nMappers = std::min(static_cast<unsigned>(fileList.size()), nMappers);
   nReducers = std::min(nMappers, nReducers);
