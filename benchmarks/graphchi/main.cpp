@@ -209,7 +209,7 @@ unsigned setPartitionId(const unsigned tid)
     efprintf(stderr, "Shard: %u, Interval: %u, Start: %zu, End: %zu, Length: %zu\n", tid, j, gcd[tid][j].startEdgeIndex, gcd[tid][j].endEdgeIndex, gcd[tid][j].length);
     }
    
-    fprintf(stderr, "%c---------------------------------\n", '-');
+    efprintf(stderr, "%c---------------------------------\n", '-');
     // ***************** Done building meta data *****************
    efprintf(stderr, "Sorting memory shard %u took: %.3lf\n", memoryShard, tmDiff(s, e));
 
