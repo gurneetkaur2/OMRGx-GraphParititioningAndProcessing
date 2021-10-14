@@ -136,7 +136,7 @@ void* doReduce(void* arg)
       //fprintf(stderr,"\nMR TID: %d Inner While Don: %d, ExecL: %d **********", tid, don, execLoop);
       if(execLoop == false) {
 #ifdef USE_GOMR
-        fprintf(stderr,"\nTID: %d LAST Batch  map size: %d", tid, writer.readBufMap[tid].size());
+        efprintf(stderr,"\nTID: %d LAST Batch  map size: %d", tid, writer.readBufMap[tid].size());
         assert(writer.readBufMap[tid].size() != 0);
         mr->reduce(tid, writer.readBufMap[tid]);
 //	mr->cWrite(tid);
