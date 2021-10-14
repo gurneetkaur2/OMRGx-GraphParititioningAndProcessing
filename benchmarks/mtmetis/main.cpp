@@ -380,7 +380,7 @@ std::map<KeyType, std::vector<ValueType>> MATCH_RM(const unsigned tid, std::map<
    std::map<KeyType, std::vector<ValueType>> cgraph;
    IdType k, j, v, u, m, nedges, cnedges;
      
-   htable = (IdType *) calloc(cnvtxs, sizeof(IdType));
+   htable = (IdType *) calloc(container.size(), sizeof(IdType));
    for(IdType i=0; i<container.size(); i++){
        htable[i] = -1;
    }
@@ -420,20 +420,25 @@ std::map<KeyType, std::vector<ValueType>> MATCH_RM(const unsigned tid, std::map<
     // fprintf(stderr,"\nTID: %d, v!=u element: %d k: %u, nedges: %u match: %u htable: %u ", tid,uit->second[vit], k, nedges, match[uit->second[vit]], htable[k]);
           }
         }
-   fprintf(stderr,"\nTID: %d before zero out cnvtxs: %u ", tid, cnvtxs);
+   fprintf(stderr,"\nTID: %d before htable!=-1 cnvtxs: %u ", tid, cnvtxs);
        if ((htable[cnvtxs]) != -1) {
            htable[cnvtxs] = -1;
        }
      }
       /* Zero out the htable */
-      for (j=0; j<nedges; j++)
-           htable[j] = -1;
+   fprintf(stderr,"\nTID: %d before zero out cnvtxs: %u, nedges: %u ", tid, cnvtxs, nedges);
+     /* for (j=0; j<nedges; j++){
+         fprintf(stderr,"\nTID: %d Inside zero out nedges: %u htable: %d ", tid, cnvtxs, htable[j]);
+          if(htable != -1)
+            htable[j] = -1;
+      }*/
+   
+    fprintf(stderr,"\nTID: %d cnedges: %u level: %d ", tid, cnedges, level);
      if(gcd[tid][level].endIndex < it->first) 
        gcd[tid][level].endIndex = it->first;
 
      cnedges         += nedges;
    }
-    //fprintf(stderr,"\nTID: %d cnedges: %u ", tid, cnedges);
    gcd[tid][level].cnedges = cnedges;
    return cgraph;
  }
@@ -721,9 +726,9 @@ int main(int argc, char** argv)
 {
   MtMetis<IdType, IdType> mt;
 
-  if (argc < 11)
+  if (argc < 10)
   {
-  std::cout << "Usage: " << argv[0] << " <folderpath> <gb> <nmappers> <nreducers> <batchsize> <kitems> <nvertices> <iters> <hiDegree> <num parts> <optional - partition output prefix>"<< std::endl;
+  std::cout << "Usage: " << argv[0] << " <folderpath> <gb> <nmappers> <nreducers> <batchsize> <kitems> <nvertices> <iters> <hiDegree> <optional - partition output prefix>"<< std::endl;
 
   return 0;
 }
@@ -742,12 +747,12 @@ if(atoi(argv[9]) > 0)
 else
    hiDegree = 0;
 
-if(atoi(argv[10]) > 0)
-   nparts = atoi(argv[10]);
-else
-   nparts = 2;
+//if(atoi(argv[10]) > 0)
+   //nparts = atoi(argv[10]);
+//else
+   nparts = nreducers;
 
-outputPrefix = argv[11];
+outputPrefix = argv[10];
 #else
 nvertices = -1;
 niterations = 1;
