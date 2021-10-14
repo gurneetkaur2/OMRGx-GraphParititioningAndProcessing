@@ -78,7 +78,7 @@ class GraphChi : public MapReduce<KeyType, ValueType>
 
   void* beforeMap(const unsigned tid) {
     unsigned nCols = this->getCols();
-    fprintf(stderr, "TID: %d, nvert:  %d part: %d \n", tid, nvertices, tid % nCols);
+    efprintf(stderr, "TID: %d, nvert:  %d part: %d \n", tid, nvertices, tid % nCols);
     return NULL;
   }
 
@@ -87,7 +87,7 @@ class GraphChi : public MapReduce<KeyType, ValueType>
       prOutput = new std::vector<IdType>[nCols];
       edgeCounter = 0;
       iteration = 0;
-      fprintf(stderr,"\nInside writeINIT ************NOT EMPTY Vertices: %d ", nvertices);
+      efprintf(stderr,"\nInside writeINIT ************NOT EMPTY Vertices: %d ", nvertices);
  /*    for(unsigned i=0; i<nCols; i++){ 
         for(IdType j=0; j<=nVtces; j++) 
           prOutput[i][j] = -1;
@@ -161,7 +161,7 @@ unsigned setPartitionId(const unsigned tid)
     ii[shard].lbIndex = it_first->first;
     
     IdType lbIndex = container.begin()->first;
-    fprintf(stderr, "Initialize sub-graph: %u\n", memoryShard);
+    efprintf(stderr, "Initialize sub-graph: %u\n", memoryShard);
     timeval s, e;
     gettimeofday(&s, NULL);
     std::vector<Edge *> vertices; 
@@ -184,7 +184,7 @@ unsigned setPartitionId(const unsigned tid)
         ii[shard].ubIndex = it->first;
     }
     gettimeofday(&e, NULL);
-    fprintf(stderr, "\nInitializing subgraph for memory shard %u took: %.3lf\n", memoryShard, tmDiff(s, e));
+    efprintf(stderr, "\nInitializing subgraph for memory shard %u took: %.3lf\n", memoryShard, tmDiff(s, e));
     assert(readEdges != NULL);
    ii[shard].indexCount = indexCount;
    ii[shard].ubEdgeCount = edgeCounter;
@@ -198,26 +198,26 @@ unsigned setPartitionId(const unsigned tid)
     IdType edgeGCounter = ii[tid].lbEdgeCount;
    for(unsigned j=0; j < this->getCols(); j++){
         gcd[tid][j].startEdgeIndex = edgeGCounter;
-        fprintf(stderr, "\nProcessing shard: %u, interval %u: StartVertex: %zu, EndVertex: %zu, SEdgeIndex: %zu, readEdges SRC: %u\n", tid, j, ii[j].lbIndex, ii[j].ubIndex, gcd[tid][j].startEdgeIndex, readEdges[shard][count].src);
+        efprintf(stderr, "\nProcessing shard: %u, interval %u: StartVertex: %zu, EndVertex: %zu, SEdgeIndex: %zu, readEdges SRC: %u\n", tid, j, ii[j].lbIndex, ii[j].ubIndex, gcd[tid][j].startEdgeIndex, readEdges[shard][count].src);
         while(readEdges[shard][count].src >= ii[j].lbIndex && readEdges[shard][count].src < ii[j].ubIndex && count < ii[tid].edgeCount) {
               count++; // skip over
               edgeGCounter++;
         }
-    fprintf(stderr, "After interval: %zu (prev: %zu)\n", readEdges[shard][count].src, readEdges[shard][count-1].src);
+    efprintf(stderr, "After interval: %zu (prev: %zu)\n", readEdges[shard][count].src, readEdges[shard][count-1].src);
     gcd[tid][j].endEdgeIndex = edgeGCounter;
     gcd[tid][j].length = gcd[tid][j].endEdgeIndex - gcd[tid][j].startEdgeIndex;
-    fprintf(stderr, "Shard: %u, Interval: %u, Start: %zu, End: %zu, Length: %zu\n", tid, j, gcd[tid][j].startEdgeIndex, gcd[tid][j].endEdgeIndex, gcd[tid][j].length);
+    efprintf(stderr, "Shard: %u, Interval: %u, Start: %zu, End: %zu, Length: %zu\n", tid, j, gcd[tid][j].startEdgeIndex, gcd[tid][j].endEdgeIndex, gcd[tid][j].length);
     }
    
-    fprintf(stderr, "%c---------------------------------\n", '-');
+    efprintf(stderr, "%c---------------------------------\n", '-');
     // ***************** Done building meta data *****************
-   fprintf(stderr, "Sorting memory shard %u took: %.3lf\n", memoryShard, tmDiff(s, e));
+   efprintf(stderr, "Sorting memory shard %u took: %.3lf\n", memoryShard, tmDiff(s, e));
 
-    fprintf(stderr, "Num vertices: %zu, IC: %zu\n", vertices.size(), ii[shard].indexCount); //container.size());
+    efprintf(stderr, "Num vertices: %zu, IC: %zu\n", vertices.size(), ii[shard].indexCount); //container.size());
     // then parallel-process shard -- calculate Pagerank
     gettimeofday(&s, NULL);
                                                           
-       fprintf(stderr, "TID: %d, PR Processing shard: %u \n", tid, memoryShard);
+       efprintf(stderr, "TID: %d, PR Processing shard: %u \n", tid, memoryShard);
     for(unsigned i= 0; i<vertices.size(); ) { 
        IdType dst = vertices[i]->dst;
        long double sum = 0.0;
@@ -253,9 +253,9 @@ unsigned setPartitionId(const unsigned tid)
     }
   }
      gettimeofday(&e, NULL);
-     fprintf(stderr, "!!!!!Parallel processing of subgraph for memory shard %u took: %.3lf\n", memoryShard, tmDiff(s, e));
-     fprintf(stderr, "-------------------------%c\n", '-');
-   fprintf(stderr,"\nTID %d Waiting at barrier ------ " , tid);
+     efprintf(stderr, "!!!!!Parallel processing of subgraph for memory shard %u took: %.3lf\n", memoryShard, tmDiff(s, e));
+     efprintf(stderr, "-------------------------%c\n", '-');
+   efprintf(stderr,"\nTID %d Waiting at barrier ------ " , tid);
    pthread_barrier_wait(&(barWait)); 
     readEdges[tid].clear();
     //diskWriteContainer(tid, ii[shard].lbEdgeCount, ii[shard].edgeCount, readEdges[tid].begin(), readEdges[tid].end());

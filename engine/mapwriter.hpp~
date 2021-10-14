@@ -124,11 +124,11 @@ template <typename KeyType, typename ValueType>
 void MapWriter<KeyType, ValueType>::writeInit() {
     fprintf(stderr,"\n TID nParts %d vertices %d ", nCols, nVtces);
   //for (unsigned i = 0; i<nCols; ++i) {
-    /*for (unsigned j = 0; j<=nVtces; ++j) {
+    for (unsigned j = 0; j<=nVtces; ++j) {
          nNbrs.push_back(0); 
          //done.push_back(0); 
         // next[i].push_back(-1); 
-        }*/
+        }
     // } 
 
 }
@@ -376,7 +376,7 @@ void MapWriter<KeyType, ValueType>::performWrite(const unsigned tid, const unsig
     combine(key, it->second, vals);
     #ifdef USE_GOMR
     // I do not need locks here because the threads will not share the same key
-   // nNbrs.at(key) += 1;
+    nNbrs.at(key) += 1;
     #endif
     ++localCombinedPairs[tid];
     //cTotalKeys[buffer] += value;
@@ -386,7 +386,7 @@ void MapWriter<KeyType, ValueType>::performWrite(const unsigned tid, const unsig
   else {
     outBufMap[buffer].emplace(key, vals); 
     #ifdef USE_GOMR
-   // nNbrs.at(key) = 1;
+    nNbrs.at(key) = 1;
     #endif
     //cTotalKeys[buffer] += value;
     nItems[buffer]++;

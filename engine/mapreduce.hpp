@@ -136,7 +136,7 @@ void* doReduce(void* arg)
       //fprintf(stderr,"\nMR TID: %d Inner While Don: %d, ExecL: %d **********", tid, don, execLoop);
       if(execLoop == false) {
 #ifdef USE_GOMR
-        fprintf(stderr,"\nTID: %d LAST Batch  map size: %d", tid, writer.readBufMap[tid].size());
+        efprintf(stderr,"\nTID: %d LAST Batch  map size: %d", tid, writer.readBufMap[tid].size());
         assert(writer.readBufMap[tid].size() != 0);
         mr->reduce(tid, writer.readBufMap[tid]);
 //	mr->cWrite(tid);
@@ -367,14 +367,13 @@ void MapReduce<KeyType, ValueType>::init(const std::string input, const unsigned
   nReducers = reducers;
   nVertices = vertices;
   hiDegree = hidegree;
-  batchSize = bSize;
   kBItems = kItems;
   gb = g;
   //unsigned int nIterations = UINT_MAX;
   nIterations = iterations;
 
   getListOfFiles(inputFolder, &fileList);
-  reduceFiles(inputFolder, &fileList, gb);
+  //reduceFiles(inputFolder, &fileList, gb);
   std::cout << "Number of files: " << fileList.size() << std::endl;
 
   if(fileList.size() == 0) {
@@ -384,7 +383,12 @@ void MapReduce<KeyType, ValueType>::init(const std::string input, const unsigned
 
   printFileNames(inputFolder, &fileList, gb);
   std::cout << "Dataset size: " << gb << " GB" << std::endl;
-
+#ifdef USE_GOMR
+  unsigned wload = bSize / (nMappers * nReducers);
+  batchSize = wload + bSize % (nMappers * nReducers) ;
+#else
+  batchSize = bSize; 
+#endif
   //setThreads(std::min(static_cast<unsigned>(fileList.size()), nThreads));
   nMappers = std::min(static_cast<unsigned>(fileList.size()), nMappers);
   nReducers = std::min(nMappers, nReducers);
