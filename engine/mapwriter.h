@@ -117,6 +117,7 @@ class MapWriter
     bool firstInit;
     //IdType* cTotalKeys; //GK
     IdType* nItems; //GK
+    IdType* nValues; //GK
     IdType* totalCombined;
     IdType* readNext;
     InMemoryContainer<KeyType, ValueType>* outBufMap;  //GK

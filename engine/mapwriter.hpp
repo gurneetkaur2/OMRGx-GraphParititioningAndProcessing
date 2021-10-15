@@ -39,6 +39,7 @@ void MapWriter<KeyType, ValueType>::initBuf(unsigned nMappers, unsigned nReducer
   //nReadKeys = new IdType[nBuffers];
   totalCombined = new IdType[nCols];
   nItems = new IdType[nRows * nCols];
+  nValues = new IdType[nRows * nCols];
   readNext = new IdType[nCols];
 //  prev = new std::vector<unsigned>[nCols];
 //  next = new std::vector<unsigned>[nCols];
@@ -51,9 +52,11 @@ void MapWriter<KeyType, ValueType>::initBuf(unsigned nMappers, unsigned nReducer
   batchesCompleted = new std::vector<bool>[nCols];
   keysPerBatch = new std::vector<unsigned>[nCols];
   
-  for (unsigned i=0; i<nRows * nCols; ++i) 
+  for (unsigned i=0; i<nRows * nCols; ++i){ 
     nItems[i] = 0;
-  
+    nValues[i] = 0;
+  }
+   
   for(unsigned i=0; i<nCols; ++i) {  
     pthread_mutex_t mutex;
     pthread_mutex_init(&mutex, NULL);
@@ -84,6 +87,7 @@ void MapWriter<KeyType, ValueType>::releaseMapStructures()
 
   //delete[] cTotalKeys;
   delete[] nItems;
+  delete[] nValues;
  // delete[] outBufMap;
 }
 //-------------------------------------------------
@@ -175,7 +179,7 @@ void MapWriter<KeyType, ValueType>::writeBuf(const unsigned tid, const KeyType& 
 */
 //  	fprintf(stderr, "\nWB- start outbufmap size : %d\t buffer: %llu\t nItems: %u", outBufMap[buffer].size(),buffer, nItems[buffer]);
   
-  if (outBufMap[buffer].size() >= batchSize)   
+  if (outBufMap[buffer].size() >= batchSize || nValues[buffer] >= batchSize)   
   {
  //   fprintf(stderr, "thread %u flushing off buffer %llu to file %llu\n", tid, buffer, bufferId);
     
@@ -188,6 +192,7 @@ void MapWriter<KeyType, ValueType>::writeBuf(const unsigned tid, const KeyType& 
     
     outBufMap[buffer].clear();
     nItems[buffer] = 0;
+    nValues[buffer] = 0;
     writtenToDisk = true;
   }
 
@@ -379,6 +384,7 @@ void MapWriter<KeyType, ValueType>::performWrite(const unsigned tid, const unsig
    // nNbrs.at(key) += 1;
     #endif
     ++localCombinedPairs[tid];
+    nValues[buffer]++;
     //cTotalKeys[buffer] += value;
 //      fprintf(stderr,"\tTID: %d, src: %zu, dst: %zu, vrank: %f, rank: %f nNbrs: %u", it->second[0].src, it->second[0].dst, it->second[0].vRank, it->second[0].rank, it->second[0].numNeighbors);
 //    			         fprintf(stderr, "\nWord added in map: %d, Value after add size: %d, buffer: %llu outBufMap size: %d", key, it->second.size(), buffer, outBufMap[buffer].size());
@@ -390,6 +396,7 @@ void MapWriter<KeyType, ValueType>::performWrite(const unsigned tid, const unsig
     #endif
     //cTotalKeys[buffer] += value;
     nItems[buffer]++;
+    nValues[buffer]++;
     //		       fprintf(stderr, "\nWB - word added in map: %s\t buffer: %llu\t outBufMap size: %d", out.word().c_str(), buffer, outBufMap[buffer].size());
   }
 }
