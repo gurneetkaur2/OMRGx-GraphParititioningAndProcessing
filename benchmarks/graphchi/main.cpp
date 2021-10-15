@@ -124,7 +124,7 @@ unsigned setPartitionId(const unsigned tid)
            e.vRank = 1.0/nvertices;
            e.numNeighbors = from.size();
  //     fprintf(stderr,"\tTID: %d, src: %zu, dst: %zu, vrank: %f, rank: %f nNbrs: %u", tid, e.src, e.dst, e.vRank, e.rank, e.numNeighbors);
-      this->writeBuf(tid, to, e, nbufferId, 0);
+      this->writeBuf(tid, to, e, nbufferId, from.size());
     }
 
     return NULL;
