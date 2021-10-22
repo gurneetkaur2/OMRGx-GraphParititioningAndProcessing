@@ -123,10 +123,12 @@ unsigned setPartitionId(const unsigned tid)
            e.rank = 1.0/nvertices;
            e.vRank = 1.0/nvertices;
            e.numNeighbors = from.size();
+         
+           edgeCounter++;
  //     fprintf(stderr,"\tTID: %d, src: %zu, dst: %zu, vrank: %f, rank: %f nNbrs: %u", tid, e.src, e.dst, e.vRank, e.rank, e.numNeighbors);
       this->writeBuf(tid, to, e, nbufferId, from.size());
     }
-
+    ii[tid].ubEdgeCount = edgeCounter;
     return NULL;
   }
 
@@ -140,11 +142,13 @@ unsigned setPartitionId(const unsigned tid)
       e.vRank = 1.0/nvertices;
       e.numNeighbors = 0;
       
-     // fprintf(stderr,"\nInside before reduce ************ Container size: %d ", this->getContainerSize());
-      for (unsigned j = 0; j<=nvertices; ++j) {
+    // fprintf(stderr,"\nInside before reduce ************ Container size: %d ECounter: %d  ", this->getContainerSize(), ii[tid].ubEdgeCount);
+      //for (unsigned j = 0; j<=nvertices; ++j) {
+      for (unsigned j = 0; j<ii[tid].ubEdgeCount; ++j) {
           readEdges[tid].push_back(e);
   //        ssIndex[tid][j] = 0;
         }
+      edgeCounter = 0;
    // fprintf(stderr,"\nTID: %d AFTER beforeReduce ", tid);
   }
 
@@ -164,24 +168,35 @@ unsigned setPartitionId(const unsigned tid)
     efprintf(stderr, "Initialize sub-graph: %u\n", memoryShard);
     timeval s, e;
     gettimeofday(&s, NULL);
-    std::vector<Edge *> vertices; 
+   // std::vector<Edge *> vertices; 
    unsigned id = 0;
-    IdType v = it_first->second[0].dst;
+   // IdType v = it_first->second[0].dst;
     //fprintf(stderr,"\nSHARD: %u, CONTAINER elements to SHIVEL LowerBound: %d ", tid, ii[shard].lbIndex);
     for(auto it = container.begin(); it != container.end(); it++){
         // fprintf(stderr,"\nSHARD: %u, CONTAINER elements Key: %u, value size: %d, values: ", tid, it->first, it->second.size());
       for(int k=0; k<it->second.size(); k++) {
            Edge e = it->second[k];
-           v = e.dst;
-        //fprintf(stderr,"\nSHARD: %d ES elements dst: %zu src: %zu ", shard, it->second[k].dst, it->second[k].src);
-           readEdges[shard][id++] = (it->second[k]);
-         // fprintf(stderr,"\t src:%zu dst %zu ", e.src, e.dst);
-         vertices.push_back(&e);
-        while(k<it->second.size() && v==e.dst) k++;  //TODO: edgecount should be buffer count
+          // v = e.dst;
+      //  fprintf(stderr,"\nSHARD: %d ES elements dst: %zu src: %zu ", shard, it->second[k].dst, it->second[k].src);
+          readEdges[shard][id++] = (it->second[k]);
+        //  fprintf(stderr,"\t src:%zu dst %zu ", e.src, e.dst);
+        // vertices.push_back(&e);
+        //while(k<it->second.size() && v==e.dst) k++;  //TODO: edgecount should be buffer count
          edgeCounter++;
         }
         indexCount++;
         ii[shard].ubIndex = it->first;
+    }
+    std::vector<Edge *> vertices; 
+    IdType v = it_first->second[0].dst;
+    //fprintf(stderr,"\nSHARD: %u, CONTAINER elements to SHIVEL LowerBound: %d ", tid, ii[shard].lbIndex);
+    for(auto it = container.begin(); it != container.end(); it++){
+      for(int k=0; k<it->second.size(); k++) {
+           Edge e = it->second[k];
+           v = e.dst;
+         vertices.push_back(&e);
+        while(k<it->second.size() && v==e.dst) k++;  //TODO: edgecount should be buffer count
+        }
     }
     gettimeofday(&e, NULL);
     efprintf(stderr, "\nInitializing subgraph for memory shard %u took: %.3lf\n", memoryShard, tmDiff(s, e));
