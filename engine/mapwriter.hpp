@@ -67,11 +67,11 @@ void MapWriter<KeyType, ValueType>::initBuf(unsigned nMappers, unsigned nReducer
 
   // setup FileIO
 #ifdef USE_ONE_PHASE_IO
-  io = new OnePhaseFileIO<RecordType>("/tmp/gkaur007/mrdata/", nCols, 0/*UNUSED*/);
+  io = new OnePhaseFileIO<RecordType>("/rhome/gkaur007/bigdata/gkaur007/mrdata/", nCols, 0/*UNUSED*/);
 #else
-  io = new TwoPhaseFileIO<RecordType>("/tmp/gkaur007/mrdata/", nCols, 0/*UNUSED*/);
+  io = new TwoPhaseFileIO<RecordType>("/rhome/gkaur007/bigdata/gkaur007/mrdata/", nCols, 0/*UNUSED*/);
 #endif
-  cio = new TwoPhaseFileIO<RecordType>("/tmp/gkaur007/combdata/", nCols, 0/*UNUSED*/);
+  cio = new TwoPhaseFileIO<RecordType>("/rhome/gkaur007/bigdata/gkaur007/combdata/", nCols, 0/*UNUSED*/);
 }
 
 //-------------------------------------------------
