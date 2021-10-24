@@ -13,7 +13,7 @@ PROTO_FLAGS := #-L /home/gkaur007/opt/lib
 PROTO_LIBS  := -lprotobuf 
 
 RM          := rm -rf
-OBJS        := data.pb.o edgelist.pb.o adjacencyList.pb.o $(LIBPATH)/util.o main.o
+OBJS        := data.pb.o $(LIBPATH)/util.o main.o
 #OBJS_ONE    := $(LIBPATH)/util.o graph.pb.o edgelist.pb.o adjacencyList.pb.o main-one.o
 
 OPTS        := -DUSE_GOMR -DUSE_GRAPHCHI #from command line (eg: OPTS+=...)
