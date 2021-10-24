@@ -80,7 +80,7 @@ class GraphChi : public MapReduce<KeyType, ValueType>
   static thread_local IdType edgeCounter;
   static thread_local unsigned iteration;
   std::vector<pthread_mutex_t> locks;
-  //unsigned long long *totalPECuts;
+  unsigned long long *totalPECuts;
   std::map<unsigned, unsigned>* dTable;
   std::map<unsigned, unsigned >* bndIndMap;
   std::vector<unsigned long>* where;
@@ -90,7 +90,7 @@ class GraphChi : public MapReduce<KeyType, ValueType>
   std::vector<unsigned>* markMin;
   std::set<unsigned>* fetchPIds;
   std::map<unsigned, unsigned> pIdStarted;
-  //unsigned totalCuts;
+  unsigned totalCuts;
 
   public:
   std::vector<IdType> *prOutput;
@@ -185,7 +185,7 @@ class GraphChi : public MapReduce<KeyType, ValueType>
     pIdsCompleted = new std::vector<unsigned>[nReducers];
     markMax = new std::vector<unsigned>[nReducers];
     markMin = new std::vector<unsigned>[nReducers];
-    //totalPECuts = new unsigned long long[nReducers];
+    totalPECuts = new unsigned long long[nReducers];
     
   }
 
@@ -200,7 +200,7 @@ class GraphChi : public MapReduce<KeyType, ValueType>
     refineInit(tid);
    //  fprintf(stderr,"\nTID: %d AFTER refineInit 2 ", tid);
 
-    efprintf(stderr,"\nInside before reduce ************ Container size: %d ECounter: %d  ", this->getContainerSize(), ii[tid].ubEdgeCount);
+    fprintf(stderr,"\nInside before reduce ************ Container size: %d ECounter: %d  ", this->getContainerSize(), ii[tid].ubEdgeCount);
     //for (unsigned j = 0; j<=nvertices; ++j) {
     for (unsigned j = 0; j<ii[tid].ubEdgeCount; ++j) {
         Edge e;
@@ -214,7 +214,7 @@ class GraphChi : public MapReduce<KeyType, ValueType>
       //        ssIndex[tid][j] = 0;
     }
     edgeCounter = 0;
-     //fprintf(stderr,"\nTID: %d AFTER beforeReduce ", tid);
+     fprintf(stderr,"\nTID: %d AFTER beforeReduce ", tid);
   }
 
   void refineInit(const unsigned tid) {
@@ -225,14 +225,14 @@ class GraphChi : public MapReduce<KeyType, ValueType>
     // fprintf(stderr, "\nTID: %d,RI PIds[tid] size(): %d  \n", tid, pIdsCompleted[tid].size());
     }
     //fprintf(stderr,"\ntTID %d, RefineINit fetchPID size: %d ----", tid, fetchPIds[tid].size());
-    //totalPECuts[tid] = 0;
-    //totalCuts = 0;
+    totalPECuts[tid] = 0;
+    totalCuts = 0;
      fprintf(stderr,"\nTID: %d AFTER refineInit ", tid);
   }
 
   void* reduce(const unsigned tid, const InMemoryContainer<KeyType, ValueType>& container) {
     //GO partition refinement
-     efprintf(stderr,"\nTID: %d Inside reduce --- ", tid);
+     fprintf(stderr,"\nTID: %d Inside reduce --- ", tid);
     unsigned hipart = tid;
     for(auto it = fetchPIds[tid].begin(); it != fetchPIds[tid].end(); ++it) {
       //for(auto wherei=0; wherei < nReducers; wherei++){ //start TID loop
@@ -260,7 +260,7 @@ class GraphChi : public MapReduce<KeyType, ValueType>
       // fprintf(stderr, "\nTID: %d, Before BarEDGECUTS ", tid);
       //     pthread_barrier_wait(&(barEdgeCuts)); 
 
-      efprintf(stderr, "\nTID: %d, Computing Gain  Container: %d", tid, container.size());
+      fprintf(stderr, "\nTID: %d, Computing Gain  Container: %d", tid, container.size());
       if(ret == true){
         int maxG = -1;
         do{
@@ -446,9 +446,10 @@ class GraphChi : public MapReduce<KeyType, ValueType>
     }
 
     void* afterReduce(const unsigned tid) {
-      fprintf(stderr,"\nTID: %d After Reduce ", tid);
+      efprintf(stderr,"\nTID: %d After Reduce ", tid);
+      fprintf(stderr, "\nthread %u waiting for others to finish Refine\n", tid);
       pthread_barrier_wait(&(barAfterRefine));
-      refineInit(tid);
+ //     refineInit(tid);
       clearMemorystructures(tid);
       // readEdges[tid].clear();
       //    if(!outputPrefix.empty()){
@@ -483,7 +484,7 @@ class GraphChi : public MapReduce<KeyType, ValueType>
           IdType src = *it;
           if( where[src] != INIT_VAL && where[src] != where[dst] ) {
             //  fprintf(stderr,"\nTID: %d, where[%d]: %d != where[%d]: %d ", tid, src, where[src], dst, where[dst]);
-            //totalPECuts[tid]++;
+            totalPECuts[tid]++;
             costE++;
             bndind[src]++; // = costE ;     
           }
@@ -597,8 +598,8 @@ class GraphChi : public MapReduce<KeyType, ValueType>
 
       //fprintf(stderr,"\nCLEAR REfine Structs " );
       //  dTable->clear();
-      markMax->clear();
-      markMin->clear();
+     // markMax->clear();
+     // markMin->clear();
       fetchPIds->clear();
       pIdsCompleted->clear();
       //delete[] totalPECuts;
@@ -674,7 +675,7 @@ class GraphChi : public MapReduce<KeyType, ValueType>
 
 
     //-------------------
-    void printParts(const unsigned tid, std::string fileName) {
+   /* void printParts(const unsigned tid, std::string fileName) {
       ofile.open(fileName);
       assert(ofile.is_open());
       for(unsigned i = 0; i <= nvertices; ++i){
@@ -682,7 +683,7 @@ class GraphChi : public MapReduce<KeyType, ValueType>
           ofile<<i << "\t" << prOutput[tid][i]<< std::endl;
       }
       ofile.close();
-    }
+    }*/
   };
 
 
@@ -783,8 +784,9 @@ class GraphChi : public MapReduce<KeyType, ValueType>
  
     double runTime = -getTimer();
     gc.run();
+   fprintf(stderr,"\nWHERE AM I ???? After run ");
     runTime += getTimer();
-
+    
     std::cout << "Main::Run time : " << runTime << " (msec)" << std::endl;
     free(ii); free(gcd); free(ssIndex); //free(prOutput);
     delete[] readEdges;
