@@ -232,7 +232,7 @@ void* doInMemoryReduce(void* arg) {
       //refineMap[record.begin()->first] = record.begin()->second;
         if (counter >= mr->kBItems){
             mr->reduce(tid, writer.readBufMap[tid]);
-            readBufMap[tid].clear();
+            writer.readBufMap[tid].clear();
             counter = 0;
         }
       writer.readBufMap[tid][record.begin()->first] = record.begin()->second;
