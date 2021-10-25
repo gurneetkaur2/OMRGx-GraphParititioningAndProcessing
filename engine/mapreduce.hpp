@@ -313,7 +313,7 @@ end_read.resize(nMappers, 0);
 
   fprintf(stderr, "--------------------------------------\n");
 
-  if(writer.getWrittenToDisk()) 
+  //if(writer.getWrittenToDisk()) 
     writer.shutdown();
 
   std::cout << "------- Final Time ---------" << std::endl;

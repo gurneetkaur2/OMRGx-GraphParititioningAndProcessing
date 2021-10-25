@@ -794,7 +794,6 @@ class GraphChi : public MapReduce<KeyType, ValueType>
  
     double runTime = -getTimer();
     gc.run();
-   fprintf(stderr,"\nWHERE AM I ???? After run ");
     runTime += getTimer();
     
     std::cout << "Main::Run time : " << runTime << " (msec)" << std::endl;
