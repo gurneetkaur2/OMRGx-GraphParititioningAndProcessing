@@ -66,7 +66,7 @@ std::vector<Edge>* readEdges;
 static pthread_barrier_t barWait;
 static pthread_barrier_t barCompute;
 //static pthread_barrier_t barEdgeCuts;
-//static pthread_barrier_t barRefine;
+static pthread_barrier_t barRefine;
 static pthread_barrier_t barWriteInfo;
 static pthread_barrier_t barAfterRefine;
 //static pthread_barrier_t barClear;
@@ -80,7 +80,7 @@ class GraphChi : public MapReduce<KeyType, ValueType>
   static thread_local IdType edgeCounter;
   static thread_local unsigned iteration;
   std::vector<pthread_mutex_t> locks;
-  //unsigned long long *totalPECuts;
+  unsigned long long *totalPECuts;
   std::map<unsigned, unsigned>* dTable;
   std::map<unsigned, unsigned >* bndIndMap;
   std::vector<unsigned long>* where;
@@ -90,7 +90,7 @@ class GraphChi : public MapReduce<KeyType, ValueType>
   std::vector<unsigned>* markMin;
   std::set<unsigned>* fetchPIds;
   std::map<unsigned, unsigned> pIdStarted;
-  //unsigned totalCuts;
+  unsigned totalCuts;
 
   public:
   std::vector<IdType> *prOutput;
@@ -185,7 +185,7 @@ class GraphChi : public MapReduce<KeyType, ValueType>
     pIdsCompleted = new std::vector<unsigned>[nReducers];
     markMax = new std::vector<unsigned>[nReducers];
     markMin = new std::vector<unsigned>[nReducers];
-    //totalPECuts = new unsigned long long[nReducers];
+    totalPECuts = new unsigned long long[nReducers];
     
   }
 
@@ -200,7 +200,7 @@ class GraphChi : public MapReduce<KeyType, ValueType>
     refineInit(tid);
    //  fprintf(stderr,"\nTID: %d AFTER refineInit 2 ", tid);
 
-    efprintf(stderr,"\nInside before reduce ************ Container size: %d ECounter: %d  ", this->getContainerSize(), ii[tid].ubEdgeCount);
+    fprintf(stderr,"\nInside before reduce ************ Container size: %d ECounter: %d  ", this->getContainerSize(), ii[tid].ubEdgeCount);
     //for (unsigned j = 0; j<=nvertices; ++j) {
     for (unsigned j = 0; j<ii[tid].ubEdgeCount; ++j) {
         Edge e;
@@ -214,25 +214,27 @@ class GraphChi : public MapReduce<KeyType, ValueType>
       //        ssIndex[tid][j] = 0;
     }
     edgeCounter = 0;
-     //fprintf(stderr,"\nTID: %d AFTER beforeReduce ", tid);
+ //    fprintf(stderr,"\nTID: %d AFTER beforeReduce ", tid);
   }
 
   void refineInit(const unsigned tid) {
-     fprintf(stderr, "\nTID: %d,INSIDE RefineINIT reducers: %d fetchPIds[tid] size: %d\n", tid, nReducers, fetchPIds[tid].size());
+//     fprintf(stderr, "\nTID: %d,INSIDE RefineINIT reducers: %d fetchPIds[tid] size: %d\n", tid, nReducers, fetchPIds[tid].size());
     for (unsigned i = 0; i < nReducers; i++) {
       fetchPIds[tid].insert(i);  //partition ids - 0,1,2 .. 
       pIdsCompleted[tid].push_back(0);
     // fprintf(stderr, "\nTID: %d,RI PIds[tid] size(): %d  \n", tid, pIdsCompleted[tid].size());
     }
     //fprintf(stderr,"\ntTID %d, RefineINit fetchPID size: %d ----", tid, fetchPIds[tid].size());
-    //totalPECuts[tid] = 0;
-    //totalCuts = 0;
+    totalPECuts[tid] = 0;
+    totalCuts = 0;
      fprintf(stderr,"\nTID: %d AFTER refineInit ", tid);
   }
 
   void* reduce(const unsigned tid, const InMemoryContainer<KeyType, ValueType>& container) {
     //GO partition refinement
-     efprintf(stderr,"\nTID: %d Inside reduce --- ", tid);
+     // this barrier is needed when number of threads are more to prevent others from using gWhere before its updated
+     pthread_barrier_wait(&(barRefine)); 
+     fprintf(stderr,"\nTID: %d Inside reduce --- container size: %d ", tid, container.size());
     unsigned hipart = tid;
     for(auto it = fetchPIds[tid].begin(); it != fetchPIds[tid].end(); ++it) {
       //for(auto wherei=0; wherei < nReducers; wherei++){ //start TID loop
@@ -255,12 +257,13 @@ class GraphChi : public MapReduce<KeyType, ValueType>
 
       efprintf(stderr, "\nFINAL TID: %d, WHEREMAX: %d, Ret: %d !!!", tid, whereMax, ret);
       //      fprintf(stderr, "\nTID: %d, refining with: %d, ret: %d ", tid, whereMax, ret);
+      //fprintf(stderr, "\nTID: %d, Going to Compute EC  Container: %d", tid, container.size());
       ComputeBECut(tid, gWhere, bndIndMap[tid], container);
       // wait for other threads to compute edgecuts before calculating dvalues values
       // fprintf(stderr, "\nTID: %d, Before BarEDGECUTS ", tid);
       //     pthread_barrier_wait(&(barEdgeCuts)); 
 
-      efprintf(stderr, "\nTID: %d, Computing Gain  Container: %d", tid, container.size());
+      //fprintf(stderr, "\nTID: %d, Computing Gain  Container: %d", tid, container.size());
       if(ret == true){
         int maxG = -1;
         do{
@@ -272,7 +275,7 @@ class GraphChi : public MapReduce<KeyType, ValueType>
       //  pthread_barrier_wait(&(barWriteInfo)); 
       if(ret == true) {
         //writePartInfo
-        //  fprintf(stderr,"\nTID %d going to write part markMax size: %d ", tid, markMax[hipart].size());
+       //   fprintf(stderr,"\nTID %d going to write part markMax size: %d ", tid, markMax[hipart].size());
         for(unsigned it=0; it<markMax[hipart].size(); it++){
           unsigned vtx1 = markMax[hipart].at(it);     //it->first;
           unsigned vtx2 = markMin[hipart].at(it);
@@ -326,7 +329,7 @@ class GraphChi : public MapReduce<KeyType, ValueType>
         Edge e = it->second[k];
         //  fprintf(stderr,"\nSHARD: %d ES elements dst: %zu src: %zu ", shard, it->second[k].dst, it->second[k].src);
           efprintf(stderr,"\n gwhere[dst]:%zu e.dst: %zu ", gWhere[e.dst], e.dst);
-        if(gWhere[e.dst] != INIT_VAL && gWhere[e.dst] == shard && gWhere[e.src] == shard)
+//        if(gWhere[e.dst] != INIT_VAL && gWhere[e.dst] == shard && gWhere[e.src] == shard)
           readEdges[shard][id++] = (it->second[k]);
         edgeCounter++;
       }
@@ -428,6 +431,10 @@ class GraphChi : public MapReduce<KeyType, ValueType>
     void* updateReduceIter(const unsigned tid) {
       //fprintf(stderr,"\nTID: %d Updating reduce Iteration ", tid);
       pthread_barrier_wait(&(barCompute));
+      
+      efprintf(stderr, "\nTID: %d, Going to REFINEINIT ", tid);
+      refineInit(tid);
+      edgeCounter = 0;
 
       ++iteration;
       if(iteration >= this->getIterations()){
@@ -437,19 +444,21 @@ class GraphChi : public MapReduce<KeyType, ValueType>
       }
       this->notDone(tid);
       // assign next to prev for the next iteration , copy to prev of all threads
-      efprintf(stderr, "\nTID: %d, Going to REFINEINIT ", tid);
-      refineInit(tid);
-      edgeCounter = 0;
 
       fprintf(stderr,"\nTID: %d, iteration: %d ----", tid, iteration);
       return NULL;
     }
 
     void* afterReduce(const unsigned tid) {
-      fprintf(stderr,"\nTID: %d After Reduce ", tid);
+      efprintf(stderr,"\nTID: %d After Reduce ", tid);
+      fprintf(stderr, "\nthread %u waiting for others to finish Refine\n", tid);
       pthread_barrier_wait(&(barAfterRefine));
+      
+     // if(tid == 0)
+      //  this->gCopy(tid, gWhere);
+
       refineInit(tid);
-      clearMemorystructures(tid);
+      //clearMemorystructures(tid);
       // readEdges[tid].clear();
       //    if(!outputPrefix.empty()){
       //    std::string fileName = outputPrefix + std::to_string(tid);
@@ -466,10 +475,11 @@ class GraphChi : public MapReduce<KeyType, ValueType>
     void ComputeBECut(const unsigned tid, const std::vector<unsigned long>& where, InMemTable& bndind, const InMemoryContainer<KeyType, ValueType>& inMemMap) {
       IdType dst;
       std::vector<unsigned> bndvert;
-      //fprintf(stderr, "\nTID: %d, Computing EdgeCuts COntainer Size: %d ", tid, inMemMap.size());
+     // fprintf(stderr, "\nTID: %d, Computing EdgeCuts COntainer Size: %d ", tid, inMemMap.size());
 
       for (InMemoryContainerConstIterator<KeyType, ValueType> it = inMemMap.begin(); it != inMemMap.end(); ++it) {
         dst = it->first;
+           //  fprintf(stderr, "\nTID: %d, Computing EC DST: %d ", tid, dst);
         for(int k=0; k<it->second.size(); k++) {
         //for (std::vector<unsigned>::const_iterator vit = it->second.begin(); vit != it->second.end(); ++vit){
           bndvert.push_back(it->second[k].src);
@@ -483,7 +493,7 @@ class GraphChi : public MapReduce<KeyType, ValueType>
           IdType src = *it;
           if( where[src] != INIT_VAL && where[src] != where[dst] ) {
             //  fprintf(stderr,"\nTID: %d, where[%d]: %d != where[%d]: %d ", tid, src, where[src], dst, where[dst]);
-            //totalPECuts[tid]++;
+            totalPECuts[tid]++;
             costE++;
             bndind[src]++; // = costE ;     
           }
@@ -507,7 +517,7 @@ class GraphChi : public MapReduce<KeyType, ValueType>
       int maxvtx = -1, minvtx = -1;
       // fprintf(stderr, "\nTID: %d, Computing GAIN ", tid);
       for (auto it = dTable[hipart].begin(); it != dTable[hipart].end(); ++it) {
-        // fprintf(stderr, "\nTId %d dTable hipart Begin: %d, dTable Size %d ----- " , tid,dTable[hipart].begin(), dTable[hipart].size());
+         //fprintf(stderr, "\nTId %d dTable hipart Begin: %d, dTable Size %d ----- " , tid,dTable[hipart].begin(), dTable[hipart].size());
         unsigned dst = it->first; 
         std::vector<unsigned>::iterator it_max = std::find (markMax.begin(), markMax.end(), dst);
         if(it_max != markMax.end()){
@@ -520,7 +530,7 @@ class GraphChi : public MapReduce<KeyType, ValueType>
 
               for (auto it_hi = dTable[whereMax].begin(); it_hi != dTable[whereMax].end(); ++it_hi) {
                 unsigned src = it_hi->first;
-                // fprintf(stderr, "\nTID: %d, Computing Gain src: %d, dest: %d ", tid, src, dst);
+       //         fprintf(stderr, "\nTID: %d, Computing Gain src: %d, dest: %d ", tid, src, dst);
                 bool connect = 0;
                 unsigned ddst = dTable[hipart][dst];
                 unsigned dsrc = dTable[whereMax][src];
@@ -534,12 +544,13 @@ class GraphChi : public MapReduce<KeyType, ValueType>
                     for(unsigned k=0; k<it_map->second.size(); k++) {
                       if(it_map->second[k].src == src){
                     //if (std::find(it_map->second.begin(), it_map->second.end(), src) == it_map->second.end()){
-                      connect = 0;
+                      	connect = 1;
+			break;
                       }
                       else
-                        connect = 1;
+                        connect = 0;
                      }
-                    //fprintf(stderr, "\nTID: %d, Computing Gain SRC: %d is boundary vertex ", tid, src);
+     //               fprintf(stderr, "\nTID: %d, Computing Gain SRC: %d is boundary vertex ", tid, src);
                     int currGain = -1;
                     if(!connect)
                       currGain = dsrc + ddst;
@@ -586,7 +597,7 @@ class GraphChi : public MapReduce<KeyType, ValueType>
     //-------------------
     void clearRefineStructures(){
       
-     // pthread_barrier_destroy(&barRefine);
+      pthread_barrier_destroy(&barRefine);
       pthread_barrier_destroy(&barCompute);
       pthread_barrier_destroy(&barWait);
      // pthread_barrier_destroy(&barEdgeCuts);
@@ -597,8 +608,8 @@ class GraphChi : public MapReduce<KeyType, ValueType>
 
       //fprintf(stderr,"\nCLEAR REfine Structs " );
       //  dTable->clear();
-      markMax->clear();
-      markMin->clear();
+     // markMax->clear();
+     // markMin->clear();
       fetchPIds->clear();
       pIdsCompleted->clear();
       //delete[] totalPECuts;
@@ -674,7 +685,7 @@ class GraphChi : public MapReduce<KeyType, ValueType>
 
 
     //-------------------
-    void printParts(const unsigned tid, std::string fileName) {
+   /* void printParts(const unsigned tid, std::string fileName) {
       ofile.open(fileName);
       assert(ofile.is_open());
       for(unsigned i = 0; i <= nvertices; ++i){
@@ -682,7 +693,7 @@ class GraphChi : public MapReduce<KeyType, ValueType>
           ofile<<i << "\t" << prOutput[tid][i]<< std::endl;
       }
       ofile.close();
-    }
+    }*/
   };
 
 
@@ -745,7 +756,7 @@ class GraphChi : public MapReduce<KeyType, ValueType>
     nReducers = nreducers;
     //slidingShard = (Edge **) calloc(numShards, sizeof(Edge *));
     //initialize barriers
- //   pthread_barrier_init(&barRefine, NULL, nReducers);
+    pthread_barrier_init(&barRefine, NULL, nReducers);
     pthread_barrier_init(&barCompute, NULL, nReducers);
 //    pthread_barrier_init(&barEdgeCuts, NULL, nReducers);
     pthread_barrier_init(&barWriteInfo, NULL, nReducers);
@@ -783,8 +794,9 @@ class GraphChi : public MapReduce<KeyType, ValueType>
  
     double runTime = -getTimer();
     gc.run();
+   fprintf(stderr,"\nWHERE AM I ???? After run ");
     runTime += getTimer();
-
+    
     std::cout << "Main::Run time : " << runTime << " (msec)" << std::endl;
     free(ii); free(gcd); free(ssIndex); //free(prOutput);
     delete[] readEdges;
