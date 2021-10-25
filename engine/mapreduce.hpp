@@ -226,10 +226,17 @@ void* doInMemoryReduce(void* arg) {
     InMemoryContainer<KeyType, ValueType> refineMap;
 #endif
 */
+    unsigned counter = 0;
     while(writer.getNextMinKey(&state, &record)) {
 #ifdef USE_GOMR
       //refineMap[record.begin()->first] = record.begin()->second;
+        if (counter >= mr->kBItems){
+            mr->reduce(tid, writer.readBufMap[tid]);
+            readBufMap[tid].clear();
+            counter = 0;
+        }
       writer.readBufMap[tid][record.begin()->first] = record.begin()->second;
+      counter++;
 #else
       mr->reduce(tid, record.begin()->first, record.begin()->second);
 #endif
@@ -238,7 +245,8 @@ void* doInMemoryReduce(void* arg) {
 #ifdef USE_GOMR
   //    fprintf(stderr,"\nMR TID: %d Inner While Don: %d, readmap: %d **********", tid, don, writer.readBufMap[tid].size());
    // mr->reduce(tid, refineMap);
-    mr->reduce(tid, writer.readBufMap[tid]);
+    if(writer.readBufMap[tid].size() != 0)
+      mr->reduce(tid, writer.readBufMap[tid]);
 #endif
 
     mr->updateReduceIter(tid);
