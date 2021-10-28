@@ -72,6 +72,8 @@ static pthread_barrier_t barAfterRefine;
 static pthread_barrier_t barClear;
 //static pthread_barrier_t barShutdown;
 unsigned *ssIndex;
+std::vector<double> go_ref_times;
+
 
 template <typename KeyType, typename ValueType>
 class GraphChi : public MapReduce<KeyType, ValueType>
@@ -79,6 +81,7 @@ class GraphChi : public MapReduce<KeyType, ValueType>
   static thread_local std::ofstream ofile;
   static thread_local IdType edgeCounter;
   static thread_local unsigned iteration;
+  static thread_local double time_go;
   std::vector<pthread_mutex_t> locks;
   unsigned long long *totalPECuts;
   //unsigned long long *totalEdgesInPart;
@@ -196,11 +199,14 @@ class GraphChi : public MapReduce<KeyType, ValueType>
   void* beforeReduce(const unsigned tid) {
     //  assert(false);
     efprintf(stderr,"\nTID: %d BEFORE reduce ", tid);
+    time_go = 0.0;
+     time_go -= getTimer();
     if(tid ==0){
       this->gCopy(tid, gWhere);
     }
     //fprintf(stderr,"\nTID: %d BEFORE RefineInit ", tid);
     refineInit(tid);
+      time_go += getTimer();
    //  fprintf(stderr,"\nTID: %d AFTER refineInit 2 ", tid);
 
     //fprintf(stderr,"\nInside before reduce ************ Container size: %d ECounter: %d edgeCounter: %d  ", this->getContainerSize(), ii[tid].ubEdgeCount, edgeCounter);
@@ -236,7 +242,9 @@ class GraphChi : public MapReduce<KeyType, ValueType>
   void* reduce(const unsigned tid, const InMemoryContainer<KeyType, ValueType>& container) {
     //GO partition refinement
      // this barrier is needed when number of threads are more to prevent others from using gWhere before its updated
+      time_go -= getTimer();
      pthread_barrier_wait(&(barRefine)); 
+     
      efprintf(stderr,"\nTID: %d Inside reduce --- container size: %d ", tid, container.size());
     unsigned hipart = tid;
     for(auto it = fetchPIds[tid].begin(); it != fetchPIds[tid].end(); ++it) {
@@ -310,7 +318,10 @@ class GraphChi : public MapReduce<KeyType, ValueType>
     //copy the partition information
     if(tid == 0)
       this->gCopy(tid, gWhere);
-
+     
+     time_go += getTimer();
+     go_ref_times[tid] = time_go;
+    
     //BuildGraphChi Metadata
     unsigned shard = tid;
     IdType indexCount = 0;
@@ -434,7 +445,7 @@ class GraphChi : public MapReduce<KeyType, ValueType>
     }
 
     void* updateReduceIter(const unsigned tid) {
-      efprintf(stderr,"\nTID: %d Updating reduce Iteration ", tid);
+      //fprintf(stderr,"\nTID: %d Updating reduce Iteration ", tid);
   //    pthread_barrier_wait(&(barCompute));
       
       efprintf(stderr, "\nTID: %d, Going to REFINEINIT ", tid);
@@ -450,12 +461,12 @@ class GraphChi : public MapReduce<KeyType, ValueType>
       this->notDone(tid);
       // assign next to prev for the next iteration , copy to prev of all threads
 
-      efprintf(stderr,"\nTID: %d, iteration: %d ----", tid, iteration);
+      fprintf(stderr,"\nTID: %d, iteration: %d ----", tid, iteration);
       return NULL;
     }
 
     void* afterReduce(const unsigned tid) {
-      efprintf(stderr,"\nTID: %d After Reduce ", tid);
+      fprintf(stderr,"\nTID: %d After Reduce ", tid);
     //  fprintf(stderr, "\nthread %u waiting for others to finish Refine\n", tid);
       pthread_barrier_wait(&(barAfterRefine));
       
@@ -644,7 +655,7 @@ class GraphChi : public MapReduce<KeyType, ValueType>
     //-----------------------------------
     void gCopy(const unsigned tid, std::vector<unsigned long>& gWhere){
       bool first = 1;
-    fprintf(stderr,"\nTID: %d Inside gCopy ", tid);
+    efprintf(stderr,"\nTID: %d Inside gCopy ", tid);
       for(unsigned i=0; i<nReducers; ++i){
         for(unsigned j=0; j<=nvertices; ++j){
           if(first){  // All Values of first thread will be copied
@@ -719,6 +730,9 @@ class GraphChi : public MapReduce<KeyType, ValueType>
   template <typename KeyType, typename ValueType>
     thread_local unsigned GraphChi<KeyType, ValueType>::iteration;
 
+  template <typename KeyType, typename ValueType>
+    thread_local double GraphChi<KeyType, ValueType>::time_go;
+
   //-------------------------------------------------
   int main(int argc, char** argv)
   {
@@ -771,6 +785,7 @@ class GraphChi : public MapReduce<KeyType, ValueType>
 //    pthread_barrier_init(&barShutdown, NULL, nReducers);
     pthread_barrier_init(&barAfterRefine, NULL, nReducers);
     pthread_barrier_init(&barWait, NULL, nreducers);
+    go_ref_times.resize(nReducers, 0.0);
 
     ii = (IntervalInfo *) calloc(nreducers, sizeof(IntervalInfo));
     assert(ii != NULL);
@@ -802,7 +817,10 @@ class GraphChi : public MapReduce<KeyType, ValueType>
     double runTime = -getTimer();
     gc.run();
     runTime += getTimer();
-    
+
+    auto go_ref_time = max_element(std::begin(go_ref_times), std::end(go_ref_times));
+    std::cout << " GO Refine time : " << *go_ref_time << " (msec)" << std::endl;
+
     std::cout << "Main::Run time : " << runTime << " (msec)" << std::endl;
     free(ii); free(gcd); free(ssIndex); //free(prOutput);
     delete[] readEdges;
