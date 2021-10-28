@@ -633,7 +633,7 @@ void refineInit(const unsigned tid) {
                   //   return 0;
                   // }
                   // else if (select == "GOMR" && argc != 9) { 
-                std::cout << "Usage: " << argv[0] << " <folderpath> <gb> <nmappers> <nreducers> <batchsize> <kitems> <optional - nvertices> <optional - max degree> <optional - partitions> <optional - partition output prefix>" << std::endl;
+                std::cout << "Usage: " << argv[0] << " <folderpath> <gb> <nmappers> <nreducers> <batchsize> <kitems> <optional - nvertices> <optional - partitions> <optional - max degree> <optional - partition output prefix>" << std::endl;
 
                 return 0;
               }
@@ -650,16 +650,16 @@ void refineInit(const unsigned tid) {
               //    nvertices = -1;
 #ifdef USE_GOMR
               nvertices = atoi(argv[7]);
-              if(atoi(argv[8]) > 0)
-                hiDegree = atoi(argv[8]);
+              if(atoi(argv[9]) > 0)
+                hiDegree = atoi(argv[9]);
               else
                 hiDegree = 0;
-              npartitions = atoi(argv[9]); //partitions
+              npartitions = atoi(argv[8]); //partitions
               outputPrefix = argv[10];
 #else
               nvertices = -1;
               hiDegree = -1;
-              npartitions = 2; ///iterations if not using GOMR
+              npartitions = 2; ///partitions = nreducers -- iterations if not using GOMR
 #endif
 
               int batchSize = atoi(argv[5]);

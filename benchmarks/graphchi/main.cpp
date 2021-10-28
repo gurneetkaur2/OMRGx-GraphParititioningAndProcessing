@@ -128,7 +128,7 @@ unsigned setPartitionId(const unsigned tid)
  //     fprintf(stderr,"\tTID: %d, src: %zu, dst: %zu, vrank: %f, rank: %f nNbrs: %u", tid, e.src, e.dst, e.vRank, e.rank, e.numNeighbors);
       this->writeBuf(tid, to, e, nbufferId, from.size());
     }
-    ii[tid].ubEdgeCount = edgeCounter;
+    ii[tid%this->getCols()].ubEdgeCount = edgeCounter;
     return NULL;
   }
 

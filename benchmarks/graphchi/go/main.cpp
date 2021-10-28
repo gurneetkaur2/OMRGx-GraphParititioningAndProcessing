@@ -124,7 +124,7 @@ class GraphChi : public MapReduce<KeyType, ValueType>
   {
     unsigned nCols = this->getCols();
     //fprintf(stderr,"\nTID: %d writing to partition: %d " , tid, tid % nCols);
-    return -1; //tid % nCols;
+    return  -1; //tid % nCols;
   }
 
   void* map(const unsigned tid, const unsigned fileId, const std::string& input, const unsigned nbufferId, const unsigned hiDegree)
@@ -237,7 +237,7 @@ class GraphChi : public MapReduce<KeyType, ValueType>
     //GO partition refinement
      // this barrier is needed when number of threads are more to prevent others from using gWhere before its updated
      pthread_barrier_wait(&(barRefine)); 
-     fprintf(stderr,"\nTID: %d Inside reduce --- container size: %d ", tid, container.size());
+     efprintf(stderr,"\nTID: %d Inside reduce --- container size: %d ", tid, container.size());
     unsigned hipart = tid;
     for(auto it = fetchPIds[tid].begin(); it != fetchPIds[tid].end(); ++it) {
       //for(auto wherei=0; wherei < nReducers; wherei++){ //start TID loop
@@ -305,7 +305,7 @@ class GraphChi : public MapReduce<KeyType, ValueType>
      pthread_barrier_wait(&(barClear)); 
     clearMemorystructures(tid);
     
-    fprintf(stderr,"\nShard: %d Waiting at BARRIER 1 ", tid);
+    efprintf(stderr,"\nShard: %d Waiting at BARRIER 1 ", tid);
      pthread_barrier_wait(&(barWriteInfo)); 
     //copy the partition information
     if(tid == 0)
@@ -323,7 +323,7 @@ class GraphChi : public MapReduce<KeyType, ValueType>
     ii[shard].lbIndex = it_first->first;
 
     IdType lbIndex = container.begin()->first;
-    fprintf(stderr, "\nInitialize sub-graph: %u\n", memoryShard);
+    efprintf(stderr, "\nInitialize sub-graph: %u\n", memoryShard);
     timeval s, e;
     gettimeofday(&s, NULL);
     unsigned id = 0;
@@ -425,7 +425,7 @@ class GraphChi : public MapReduce<KeyType, ValueType>
     gettimeofday(&e, NULL);
     efprintf(stderr, "!!!!!Parallel processing of subgraph for memory shard %u took: %.3lf\n", memoryShard, tmDiff(s, e));
     efprintf(stderr, "-------------------------%c\n", '-');
-    fprintf(stderr,"\n-------------TID %d Waiting at barrier ------ " , tid);
+    efprintf(stderr,"\n-------------TID %d Waiting at barrier ------ " , tid);
     pthread_barrier_wait(&(barWait)); 
     readEdges[tid].clear();
     //diskWriteContainer(tid, ii[shard].lbEdgeCount, ii[shard].edgeCount, readEdges[tid].begin(), readEdges[tid].end());
@@ -434,8 +434,8 @@ class GraphChi : public MapReduce<KeyType, ValueType>
     }
 
     void* updateReduceIter(const unsigned tid) {
-      fprintf(stderr,"\nTID: %d Updating reduce Iteration ", tid);
-      pthread_barrier_wait(&(barCompute));
+      efprintf(stderr,"\nTID: %d Updating reduce Iteration ", tid);
+  //    pthread_barrier_wait(&(barCompute));
       
       efprintf(stderr, "\nTID: %d, Going to REFINEINIT ", tid);
       refineInit(tid);
@@ -450,19 +450,19 @@ class GraphChi : public MapReduce<KeyType, ValueType>
       this->notDone(tid);
       // assign next to prev for the next iteration , copy to prev of all threads
 
-      fprintf(stderr,"\nTID: %d, iteration: %d ----", tid, iteration);
+      efprintf(stderr,"\nTID: %d, iteration: %d ----", tid, iteration);
       return NULL;
     }
 
     void* afterReduce(const unsigned tid) {
       efprintf(stderr,"\nTID: %d After Reduce ", tid);
-      fprintf(stderr, "\nthread %u waiting for others to finish Refine\n", tid);
+    //  fprintf(stderr, "\nthread %u waiting for others to finish Refine\n", tid);
       pthread_barrier_wait(&(barAfterRefine));
       
      // if(tid == 0)
       //  this->gCopy(tid, gWhere);
 
-      refineInit(tid);
+      //refineInit(tid);
       //clearMemorystructures(tid);
       // readEdges[tid].clear();
       //    if(!outputPrefix.empty()){
@@ -472,6 +472,7 @@ class GraphChi : public MapReduce<KeyType, ValueType>
       if(tid == 0){
         clearRefineStructures();
       }
+      //fprintf(stderr,"\nTID: %d GOING to EXIT ", tid);
       return NULL;
     }
 
