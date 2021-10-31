@@ -14,9 +14,11 @@
 #include "pthread.h"
 #include <ctime>
 #include <cstdlib>
+#include<mutex>
 
 int nvertices;
 int nmappers;
+std::mutex m;
 //static uint64_t countTotalWords = 0;
 //pthread_mutex_t countTotal;
 const long double DAMPING_FACTOR = 0.85; // Google's recommendation in original paper.
@@ -36,20 +38,39 @@ class PageRank : public MapReduce<KeyType, ValueType>
 
   std::vector<double>* prev; // = (nvertices, -1);
   std::vector<double>* next; // = (nvertices, -1);
+  std::vector<unsigned> nNbrs; // = (nvertices, -1);
   public:
 
   void* beforeMap(const unsigned tid) {
-    prev = new std::vector<double>[nmappers];
-    next = new std::vector<double>[nmappers];
-    fprintf(stderr, "TID: %d, nvert:  %d \n", tid, nvertices);
-    for (unsigned i = 0; i<=nvertices; ++i) {
-        prev[tid].push_back(1.0/nvertices);
-        next[tid].push_back(1.0/nvertices);
-      fprintf(stderr, "\n TID: %d, BEFORE key: %d prev: %f next: %f rank: %.2f \n", tid, i, prev[tid][i], next[tid][i], (1/nvertices));
-    }
     return NULL;
   }
-  void* map(const unsigned tid, const unsigned fileId, const std::string& input)
+
+  void writeInit(unsigned nCols, unsigned nVtces){
+    prev = new std::vector<double>[nCols];
+    next = new std::vector<double>[nCols];
+    //nNbrs = new std::vector<unsigned>[nCols];
+   // fprintf(stderr, "TID: %d, nvert:  %d \n", tid, nvertices);
+    for(unsigned i=0; i<nCols; i++){
+      for (unsigned j = 0; j<=nVtces; ++j) {
+        prev[i].push_back(1.0/nvertices);
+        next[i].push_back(1.0/nvertices);
+//        nNbrs.push_back(0);
+      //fprintf(stderr, "\n TID: %d, BEFORE key: %d prev: %f next: %f rank: %.2f \n", tid, i, prev[tid][i], next[tid][i], (1/nvertices));
+      }
+    }
+      for (unsigned j = 0; j<=nVtces; ++j) 
+        nNbrs.push_back(0);
+  }
+
+ unsigned setPartitionId(const unsigned tid)
+   {
+    unsigned nCols = this->getCols();
+             //fprintf(stderr,"\nTID: %d writing to partition: %d " , tid, tid % nCols);
+    return  -1; //tid % nCols;
+   }
+
+
+  void* map(const unsigned tid, const unsigned fileId, const std::string& input, const unsigned nbufferId, const unsigned hiDegree)
   {
     std::stringstream inputStream(input);
     unsigned to, token;
@@ -59,11 +80,17 @@ class PageRank : public MapReduce<KeyType, ValueType>
     while(inputStream >> token){
       from.push_back(token);
     }
+    unsigned nCols = this->getCols();
 
-    prev[tid].at(to) = 1.0/from.size();
+    prev[tid%nCols].at(to) = 1.0/from.size();
+    if(nNbrs.at(to) == 0){
+      auto my_lock = std::unique_lock<std::mutex>(m);
+      nNbrs.at(to) = from.size();
+    }
+
     for(unsigned i = 0; i < from.size(); ++i){
       //                fprintf(stderr,"\nVID: %d FROM: %zu size: %zu", to, from[i], from.size());
-      this->writeBuf(tid, to, from[i]);
+      this->writeBuf(tid, to, from[i], nbufferId, from.size());
     }
 
     return NULL;
@@ -73,46 +100,43 @@ class PageRank : public MapReduce<KeyType, ValueType>
       //  unsigned int iters = 0;
   }
 
-  void* reduce(const unsigned tid, const KeyType& key, const std::vector<ValueType>& values) {
-    //countThreadWords += std::accumulate(values.begin(), values.end(), 0);
+  void* reduce(const unsigned tid, const InMemoryContainer<KeyType, ValueType>& container){
     long double sum = 0.0;
        // iterate each vertex neighbor in adjlist
    // fprintf(stderr, "TID: %d, Reducing values \n", tid);
-    for(auto it = values.begin(); it != values.end(); ++it) { 
-        float val = prev[tid].at(*it);
-        sum += val;
+   for(auto it = container.begin(); it != container.end(); it++){ 
+      unsigned key = it->first;
+      for(auto vit = it->second.begin(); vit != it->second.end(); ++vit) { 
+         float val = prev[tid].at(*vit);
+         //sum += val;
+         if(nNbrs.at(*vit) > 0)
+            sum += val/nNbrs.at(*vit);
     }
      long double old = prev[tid].at(key);
      //next[tid].at(key) = (1-DAMPING_FACTOR) + (DAMPING_FACTOR*sum);
-     float pagerank = DAMPING_FACTOR + (1 - DAMPING_FACTOR) * sum;
+     float pagerank = (DAMPING_FACTOR * sum) + (1 - DAMPING_FACTOR);
 
-    for(auto it = values.begin(); it != values.end(); ++it) { 
-         // check if the fetched neighbor has its adjlist
-        //need adjlist size for each neighbor 
-        // need to know number of neighbors for each value???? 
-      //  fprintf(stderr, "TID: %d checking values it: %d \n", tid, *it);
+    //for(auto it = values.begin(); it != values.end(); ++it) { 
+      for(auto vit = it->second.begin(); vit != it->second.end(); ++vit) { 
        // fprintf(stderr, "TID: %d, Prev: %f Neighbor %d \n", tid, prev[tid].at(*it), nNbrs.at(*it));
-      if(nNbrs.at(*it) > 0) { 
-        next[tid].at(*it) = ( pagerank / nNbrs.at(*it));
+      if(nNbrs.at(*vit) > 0) { 
+        next[tid].at(*vit) = pagerank;
       }
       else
-        fprintf(stderr, "TID: %d, Neighbors of %d not found \n", tid, *it);
+        efprintf(stderr, "TID: %d, Neighbors of %d not found \n", tid, *it);
     }
-    fprintf(stderr, "\n TID: %d, AFTER Key: %d prev: %f next: %f \n", tid, key, prev[tid].at(key), next[tid].at(key));
+    efprintf(stderr, "\n TID: %d, AFTER Key: %d prev: %f next: %f \n", tid, key, prev[tid].at(key), next[tid].at(key));
    // fprintf(stderr, "TID: %d, DONE Reducing key prev: %d, next: %d \n", tid, prev[tid].at(key), next[tid].at(key));
 
     next[tid].at(key) = pagerank;
-
-    if(iteration > this->getIterations()){
-      done.at(key) = 1;
-//      break;
-    }
-     if( fabs(old - next[tid].at(key)) > TOLERANCE ){
+    //below code to be used for self convergence of pgrank
+  /*  if( fabs(old - next[tid].at(*it)) > TOLERANCE ){
       //  fprintf(stderr, "TID: %d, Still not done: %d  \n", tid, this->getDone(tid));
                         // flag to iterate records again--  
-                        this->notDone(key);
-                        done.at(key) = 0; 
-     }
+                        this->notDone(tid);
+                        done.at(tid) = 0; 
+     }*/
+  }
     return NULL;
   }
 
@@ -122,6 +146,10 @@ class PageRank : public MapReduce<KeyType, ValueType>
     //fprintf(stderr, "AfterReduce\n");
      // assign next to prev for the next iteration , copy to prev of all threads
    //  iters = iters + 1;
+    if(iteration >= this->getIterations()){
+      don = true;
+      return NULL;
+    }
      prev[tid].assign(next[tid].begin(), next[tid].end());
   //  for (auto i = 0; i < prev[tid].size(); i++){
     //  fprintf(stderr, "\n TID: %d, prev: %f next: %f \n", tid, prev[tid][i], next[tid][i]);
@@ -176,12 +204,18 @@ int gb = atoi(argv[2]);
 nmappers = atoi(argv[3]);
 int nreducers = atoi(argv[4]);
 int niterations = 1;
+int hiDegree;
 //int nvertices;
 //  if (select == "OMR")
 //    nvertices = -1;
 #ifdef USE_GOMR
 nvertices = atoi(argv[7]);
 niterations = atoi(argv[8]);
+if(atoi(argv[9]) > 0)
+  hiDegree = atoi(argv[9]);
+else
+hiDegree = 0;
+
 #else
 nvertices = -1;
 niterations = 1;
@@ -194,8 +228,9 @@ assert(batchSize > 0);
 //pthread_mutex_init(&countTotal, NULL);
 
 
-pr.init(folderpath, gb, nmappers, nreducers, nvertices, batchSize, kitems, niterations);
+pr.init(folderpath, gb, nmappers, nreducers, nvertices, hiDegree, batchSize, kitems, niterations);
 
+pr.writeInit(nreducers, nvertices);
 double runTime = -getTimer();
 pr.run(); 
 runTime += getTimer();
