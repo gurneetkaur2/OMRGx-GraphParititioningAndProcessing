@@ -36,8 +36,8 @@ class PageRank : public MapReduce<KeyType, ValueType>
   //static thread_local std::vector<unsigned> prev; // = (nvertices, -1);
   //static thread_local std::vector<unsigned> next; // = (nvertices, -1);
 
-  std::vector<double>* prev; // = (nvertices, -1);
-  std::vector<double>* next; // = (nvertices, -1);
+  //std::vector<double>* prev; // = (nvertices, -1);
+  //std::vector<double>* next; // = (nvertices, -1);
 //  std::vector<unsigned> nNbrs; // = (nvertices, -1);
   public:
 
@@ -46,7 +46,7 @@ class PageRank : public MapReduce<KeyType, ValueType>
   }
 
   void writeInit(unsigned nCols, unsigned nVtces){
-    prev = new std::vector<double>[nCols];
+    /*prev = new std::vector<double>[nCols];
     next = new std::vector<double>[nCols];
     //nNbrs = new std::vector<unsigned>[nCols];
    // fprintf(stderr, "TID: %d, nvert:  %d \n", tid, nvertices);
@@ -60,7 +60,7 @@ class PageRank : public MapReduce<KeyType, ValueType>
     }
   //    for (unsigned j = 0; j<=nVtces; ++j) 
  //       nNbrs.push_back(0);
-  }
+ */ }
 
  unsigned setPartitionId(const unsigned tid)
    {
@@ -82,7 +82,7 @@ class PageRank : public MapReduce<KeyType, ValueType>
     }
     unsigned nCols = this->getCols();
 
-    prev[tid%nCols].at(to) = 1.0/from.size();
+   // prev[tid%nCols].at(to) = 1.0/from.size();
    /* if(nNbrs.at(to) == 0){
       auto my_lock = std::unique_lock<std::mutex>(m);
       nNbrs.at(to) = from.size();
