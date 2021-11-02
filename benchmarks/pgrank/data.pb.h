@@ -31,9 +31,132 @@ void  protobuf_AddDesc_data_2eproto();
 void protobuf_AssignDesc_data_2eproto();
 void protobuf_ShutdownFile_data_2eproto();
 
+class EdgeType;
 class RecordType;
 
 // ===================================================================
+
+class EdgeType : public ::google::protobuf::Message {
+ public:
+  EdgeType();
+  virtual ~EdgeType();
+
+  EdgeType(const EdgeType& from);
+
+  inline EdgeType& operator=(const EdgeType& from) {
+    CopyFrom(from);
+    return *this;
+  }
+
+  inline const ::google::protobuf::UnknownFieldSet& unknown_fields() const {
+    return _unknown_fields_;
+  }
+
+  inline ::google::protobuf::UnknownFieldSet* mutable_unknown_fields() {
+    return &_unknown_fields_;
+  }
+
+  static const ::google::protobuf::Descriptor* descriptor();
+  static const EdgeType& default_instance();
+
+  void Swap(EdgeType* other);
+
+  // implements Message ----------------------------------------------
+
+  EdgeType* New() const;
+  void CopyFrom(const ::google::protobuf::Message& from);
+  void MergeFrom(const ::google::protobuf::Message& from);
+  void CopyFrom(const EdgeType& from);
+  void MergeFrom(const EdgeType& from);
+  void Clear();
+  bool IsInitialized() const;
+
+  int ByteSize() const;
+  bool MergePartialFromCodedStream(
+      ::google::protobuf::io::CodedInputStream* input);
+  void SerializeWithCachedSizes(
+      ::google::protobuf::io::CodedOutputStream* output) const;
+  ::google::protobuf::uint8* SerializeWithCachedSizesToArray(::google::protobuf::uint8* output) const;
+  int GetCachedSize() const { return _cached_size_; }
+  private:
+  void SharedCtor();
+  void SharedDtor();
+  void SetCachedSize(int size) const;
+  public:
+
+  ::google::protobuf::Metadata GetMetadata() const;
+
+  // nested types ----------------------------------------------------
+
+  // accessors -------------------------------------------------------
+
+  // required uint64 src = 1;
+  inline bool has_src() const;
+  inline void clear_src();
+  static const int kSrcFieldNumber = 1;
+  inline ::google::protobuf::uint64 src() const;
+  inline void set_src(::google::protobuf::uint64 value);
+
+  // required uint64 dst = 3;
+  inline bool has_dst() const;
+  inline void clear_dst();
+  static const int kDstFieldNumber = 3;
+  inline ::google::protobuf::uint64 dst() const;
+  inline void set_dst(::google::protobuf::uint64 value);
+
+  // optional double vRank = 4;
+  inline bool has_vrank() const;
+  inline void clear_vrank();
+  static const int kVRankFieldNumber = 4;
+  inline double vrank() const;
+  inline void set_vrank(double value);
+
+  // optional double rank = 5;
+  inline bool has_rank() const;
+  inline void clear_rank();
+  static const int kRankFieldNumber = 5;
+  inline double rank() const;
+  inline void set_rank(double value);
+
+  // optional uint64 nNbrs = 6;
+  inline bool has_nnbrs() const;
+  inline void clear_nnbrs();
+  static const int kNNbrsFieldNumber = 6;
+  inline ::google::protobuf::uint64 nnbrs() const;
+  inline void set_nnbrs(::google::protobuf::uint64 value);
+
+  // @@protoc_insertion_point(class_scope:EdgeType)
+ private:
+  inline void set_has_src();
+  inline void clear_has_src();
+  inline void set_has_dst();
+  inline void clear_has_dst();
+  inline void set_has_vrank();
+  inline void clear_has_vrank();
+  inline void set_has_rank();
+  inline void clear_has_rank();
+  inline void set_has_nnbrs();
+  inline void clear_has_nnbrs();
+
+  ::google::protobuf::UnknownFieldSet _unknown_fields_;
+
+  ::google::protobuf::uint64 src_;
+  ::google::protobuf::uint64 dst_;
+  double vrank_;
+  double rank_;
+  ::google::protobuf::uint64 nnbrs_;
+
+  mutable int _cached_size_;
+  ::google::protobuf::uint32 _has_bits_[(5 + 31) / 32];
+
+  friend void  protobuf_AddDesc_data_2eproto();
+  friend void protobuf_AssignDesc_data_2eproto();
+  friend void protobuf_ShutdownFile_data_2eproto();
+
+  void InitAsDefaultInstance();
+  static EdgeType* default_instance_;
+};
+// -------------------------------------------------------------------
 
 class RecordType : public ::google::protobuf::Message {
  public:
@@ -96,16 +219,16 @@ class RecordType : public ::google::protobuf::Message {
   inline ::google::protobuf::uint64 key() const;
   inline void set_key(::google::protobuf::uint64 value);
 
-  // repeated uint64 values = 2;
+  // repeated .EdgeType values = 2;
   inline int values_size() const;
   inline void clear_values();
   static const int kValuesFieldNumber = 2;
-  inline ::google::protobuf::uint64 values(int index) const;
-  inline void set_values(int index, ::google::protobuf::uint64 value);
-  inline void add_values(::google::protobuf::uint64 value);
-  inline const ::google::protobuf::RepeatedField< ::google::protobuf::uint64 >&
+  inline const ::EdgeType& values(int index) const;
+  inline ::EdgeType* mutable_values(int index);
+  inline ::EdgeType* add_values();
+  inline const ::google::protobuf::RepeatedPtrField< ::EdgeType >&
       values() const;
-  inline ::google::protobuf::RepeatedField< ::google::protobuf::uint64 >*
+  inline ::google::protobuf::RepeatedPtrField< ::EdgeType >*
       mutable_values();
 
   // @@protoc_insertion_point(class_scope:RecordType)
@@ -116,7 +239,7 @@ class RecordType : public ::google::protobuf::Message {
   ::google::protobuf::UnknownFieldSet _unknown_fields_;
 
   ::google::protobuf::uint64 key_;
-  ::google::protobuf::RepeatedField< ::google::protobuf::uint64 > values_;
+  ::google::protobuf::RepeatedPtrField< ::EdgeType > values_;
 
   mutable int _cached_size_;
   ::google::protobuf::uint32 _has_bits_[(2 + 31) / 32];
@@ -132,6 +255,120 @@ class RecordType : public ::google::protobuf::Message {
 
 
 // ===================================================================
+
+// EdgeType
+
+// required uint64 src = 1;
+inline bool EdgeType::has_src() const {
+  return (_has_bits_[0] & 0x00000001u) != 0;
+}
+inline void EdgeType::set_has_src() {
+  _has_bits_[0] |= 0x00000001u;
+}
+inline void EdgeType::clear_has_src() {
+  _has_bits_[0] &= ~0x00000001u;
+}
+inline void EdgeType::clear_src() {
+  src_ = GOOGLE_ULONGLONG(0);
+  clear_has_src();
+}
+inline ::google::protobuf::uint64 EdgeType::src() const {
+  return src_;
+}
+inline void EdgeType::set_src(::google::protobuf::uint64 value) {
+  set_has_src();
+  src_ = value;
+}
+
+// required uint64 dst = 3;
+inline bool EdgeType::has_dst() const {
+  return (_has_bits_[0] & 0x00000002u) != 0;
+}
+inline void EdgeType::set_has_dst() {
+  _has_bits_[0] |= 0x00000002u;
+}
+inline void EdgeType::clear_has_dst() {
+  _has_bits_[0] &= ~0x00000002u;
+}
+inline void EdgeType::clear_dst() {
+  dst_ = GOOGLE_ULONGLONG(0);
+  clear_has_dst();
+}
+inline ::google::protobuf::uint64 EdgeType::dst() const {
+  return dst_;
+}
+inline void EdgeType::set_dst(::google::protobuf::uint64 value) {
+  set_has_dst();
+  dst_ = value;
+}
+
+// optional double vRank = 4;
+inline bool EdgeType::has_vrank() const {
+  return (_has_bits_[0] & 0x00000004u) != 0;
+}
+inline void EdgeType::set_has_vrank() {
+  _has_bits_[0] |= 0x00000004u;
+}
+inline void EdgeType::clear_has_vrank() {
+  _has_bits_[0] &= ~0x00000004u;
+}
+inline void EdgeType::clear_vrank() {
+  vrank_ = 0;
+  clear_has_vrank();
+}
+inline double EdgeType::vrank() const {
+  return vrank_;
+}
+inline void EdgeType::set_vrank(double value) {
+  set_has_vrank();
+  vrank_ = value;
+}
+
+// optional double rank = 5;
+inline bool EdgeType::has_rank() const {
+  return (_has_bits_[0] & 0x00000008u) != 0;
+}
+inline void EdgeType::set_has_rank() {
+  _has_bits_[0] |= 0x00000008u;
+}
+inline void EdgeType::clear_has_rank() {
+  _has_bits_[0] &= ~0x00000008u;
+}
+inline void EdgeType::clear_rank() {
+  rank_ = 0;
+  clear_has_rank();
+}
+inline double EdgeType::rank() const {
+  return rank_;
+}
+inline void EdgeType::set_rank(double value) {
+  set_has_rank();
+  rank_ = value;
+}
+
+// optional uint64 nNbrs = 6;
+inline bool EdgeType::has_nnbrs() const {
+  return (_has_bits_[0] & 0x00000010u) != 0;
+}
+inline void EdgeType::set_has_nnbrs() {
+  _has_bits_[0] |= 0x00000010u;
+}
+inline void EdgeType::clear_has_nnbrs() {
+  _has_bits_[0] &= ~0x00000010u;
+}
+inline void EdgeType::clear_nnbrs() {
+  nnbrs_ = GOOGLE_ULONGLONG(0);
+  clear_has_nnbrs();
+}
+inline ::google::protobuf::uint64 EdgeType::nnbrs() const {
+  return nnbrs_;
+}
+inline void EdgeType::set_nnbrs(::google::protobuf::uint64 value) {
+  set_has_nnbrs();
+  nnbrs_ = value;
+}
+
+// -------------------------------------------------------------------
 
 // RecordType
 
@@ -157,27 +394,27 @@ inline void RecordType::set_key(::google::protobuf::uint64 value) {
   key_ = value;
 }
 
-// repeated uint64 values = 2;
+// repeated .EdgeType values = 2;
 inline int RecordType::values_size() const {
   return values_.size();
 }
 inline void RecordType::clear_values() {
   values_.Clear();
 }
-inline ::google::protobuf::uint64 RecordType::values(int index) const {
+inline const ::EdgeType& RecordType::values(int index) const {
   return values_.Get(index);
 }
-inline void RecordType::set_values(int index, ::google::protobuf::uint64 value) {
-  values_.Set(index, value);
+inline ::EdgeType* RecordType::mutable_values(int index) {
+  return values_.Mutable(index);
 }
-inline void RecordType::add_values(::google::protobuf::uint64 value) {
-  values_.Add(value);
+inline ::EdgeType* RecordType::add_values() {
+  return values_.Add();
 }
-inline const ::google::protobuf::RepeatedField< ::google::protobuf::uint64 >&
+inline const ::google::protobuf::RepeatedPtrField< ::EdgeType >&
 RecordType::values() const {
   return values_;
 }
-inline ::google::protobuf::RepeatedField< ::google::protobuf::uint64 >*
+inline ::google::protobuf::RepeatedPtrField< ::EdgeType >*
 RecordType::mutable_values() {
   return &values_;
 }
