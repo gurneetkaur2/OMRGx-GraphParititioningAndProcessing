@@ -1,8 +1,8 @@
-#ifdef USE_ONE_PHASE_IO
-#include "recordtype.h"
-#else
+//#ifdef USE_ONE_PHASE_IO
+//#include "recordtype.h"
+//#else
 #include "data.pb.h"
-#endif
+//#endif
 
 #define USE_NUMERICAL_HASH
 
@@ -38,7 +38,7 @@ class PageRank : public MapReduce<KeyType, ValueType>
 
   std::vector<double>* prev; // = (nvertices, -1);
   std::vector<double>* next; // = (nvertices, -1);
-  std::vector<unsigned> nNbrs; // = (nvertices, -1);
+//  std::vector<unsigned> nNbrs; // = (nvertices, -1);
   public:
 
   void* beforeMap(const unsigned tid) {
@@ -58,8 +58,8 @@ class PageRank : public MapReduce<KeyType, ValueType>
       //fprintf(stderr, "\n TID: %d, BEFORE key: %d prev: %f next: %f rank: %.2f \n", tid, i, prev[tid][i], next[tid][i], (1/nvertices));
       }
     }
-      for (unsigned j = 0; j<=nVtces; ++j) 
-        nNbrs.push_back(0);
+  //    for (unsigned j = 0; j<=nVtces; ++j) 
+ //       nNbrs.push_back(0);
   }
 
  unsigned setPartitionId(const unsigned tid)
@@ -83,14 +83,21 @@ class PageRank : public MapReduce<KeyType, ValueType>
     unsigned nCols = this->getCols();
 
     prev[tid%nCols].at(to) = 1.0/from.size();
-    if(nNbrs.at(to) == 0){
+   /* if(nNbrs.at(to) == 0){
       auto my_lock = std::unique_lock<std::mutex>(m);
       nNbrs.at(to) = from.size();
-    }
+    }*/
 
     for(unsigned i = 0; i < from.size(); ++i){
       //                fprintf(stderr,"\nVID: %d FROM: %zu size: %zu", to, from[i], from.size());
-      this->writeBuf(tid, to, from[i], nbufferId, from.size());
+      Edge e;
+      e.src = from[i];
+      e.dst = to;
+      e.rank = 1.0/nvertices;
+      e.vRank = 1.0/nvertices;
+      e.numNeighbors = from.size();
+      this->writeBuf(tid, to, e, nbufferId, from.size());
+      //this->writeBuf(tid, to, from[i], nbufferId, from.size());
     }
 
     return NULL;
@@ -104,31 +111,60 @@ class PageRank : public MapReduce<KeyType, ValueType>
     long double sum = 0.0;
        // iterate each vertex neighbor in adjlist
    // fprintf(stderr, "TID: %d, Reducing values \n", tid);
+   std::vector<Edge *> vertices;
+   IdType v;
    for(auto it = container.begin(); it != container.end(); it++){ 
       unsigned key = it->first;
-      for(auto vit = it->second.begin(); vit != it->second.end(); ++vit) { 
-         float val = prev[tid].at(*vit);
+//      for(auto vit = it->second.begin(); vit != it->second.end(); ++vit) { 
+        for(int k=0; k<it->second.size(); k++) {
+         /*float val = it->second[k].rank;
+         unsigned nnbrs = it->second[k].numNeighbors;
+         if(nnbrs > 0)
+            sum += val/nnbrs;
+         */
+         Edge e = it->second[k];
+         v = e.dst;
+         vertices.push_back(&e);
+         while(k<it->second.size() && v==e.dst) k++; 
+         //float val = prev[tid].at(*vit);
          //sum += val;
-         if(nNbrs.at(*vit) > 0)
-            sum += val/nNbrs.at(*vit);
-    }
-     long double old = prev[tid].at(key);
+        }
+   }
+     //long double old = *vit.rank;
      //next[tid].at(key) = (1-DAMPING_FACTOR) + (DAMPING_FACTOR*sum);
-     float pagerank = (DAMPING_FACTOR * sum) + (1 - DAMPING_FACTOR);
-
+     for(unsigned i= 0; i<vertices.size(); ) {
+        IdType dst = vertices[i]->dst;
+        long double sum = 0.0;
+        // process neighbors
+        unsigned dstStartIndex = i;
+        while(i<vertices.size() && dst == vertices[i]->dst){
+          if(vertices[i]->numNeighbors > 0){
+            sum += (vertices[i]->rank / vertices[i]->numNeighbors);
+          }
+          i++;
+        }
+        float rank = (DAMPING_FACTOR * sum) + (1 - DAMPING_FACTOR);
+        unsigned dstEndIndex = i;
+        for(unsigned dstIndex = dstStartIndex; dstIndex<dstEndIndex; dstIndex++){
+            vertices[dstIndex]->vRank = rank;
+        }
+     }
     //for(auto it = values.begin(); it != values.end(); ++it) { 
-      for(auto vit = it->second.begin(); vit != it->second.end(); ++vit) { 
+      //for(auto vit = it->second.begin(); vit != it->second.end(); ++vit) { 
+      /* for(int k=0; k<it->second.size(); k++) {
        // fprintf(stderr, "TID: %d, Prev: %f Neighbor %d \n", tid, prev[tid].at(*it), nNbrs.at(*it));
-      if(nNbrs.at(*vit) > 0) { 
-        next[tid].at(*vit) = pagerank;
+         unsigned nnbrs = it->second[k].numNeighbors;
+         if(nnbrs > 0) { 
+          it->second[k].vRank = pagerank;
       }
       else
         efprintf(stderr, "TID: %d, Neighbors of %d not found \n", tid, *it);
-    }
-    efprintf(stderr, "\n TID: %d, AFTER Key: %d prev: %f next: %f \n", tid, key, prev[tid].at(key), next[tid].at(key));
+    }*/
+    //efprintf(stderr, "\n TID: %d, AFTER Key: %d prev: %f next: %f \n", tid, key, prev[tid].at(key), next[tid].at(key));
    // fprintf(stderr, "TID: %d, DONE Reducing key prev: %d, next: %d \n", tid, prev[tid].at(key), next[tid].at(key));
 
-    next[tid].at(key) = pagerank;
+    //next[tid].at(key) = pagerank;
+   // it->first.vRank = pagerank;
     //below code to be used for self convergence of pgrank
   /*  if( fabs(old - next[tid].at(*it)) > TOLERANCE ){
       //  fprintf(stderr, "TID: %d, Still not done: %d  \n", tid, this->getDone(tid));
@@ -136,7 +172,7 @@ class PageRank : public MapReduce<KeyType, ValueType>
                         this->notDone(tid);
                         done.at(tid) = 0; 
      }*/
-  }
+ // }
     return NULL;
   }
 
@@ -150,7 +186,7 @@ class PageRank : public MapReduce<KeyType, ValueType>
       don = true;
       return NULL;
     }
-     prev[tid].assign(next[tid].begin(), next[tid].end());
+     //prev[tid].assign(next[tid].begin(), next[tid].end());
   //  for (auto i = 0; i < prev[tid].size(); i++){
     //  fprintf(stderr, "\n TID: %d, prev: %f next: %f \n", tid, prev[tid][i], next[tid][i]);
    // }
@@ -177,7 +213,7 @@ void* combine(const KeyType& key, std::vector<ValueType>& to, const std::vector<
 //-------------------------------------------------
 int main(int argc, char** argv)
 {
-  PageRank<unsigned, unsigned> pr;
+  PageRank<IdType, Edge> pr;
 
   //  std::string select = "";
   /*  while(true){
