@@ -98,7 +98,7 @@ unsigned setPartitionId(const unsigned tid)
   {
     unsigned nCols = this->getCols();
     //fprintf(stderr,"\nTID: %d writing to partition: %d " , tid, tid % nCols);
-   return tid % nCols;
+   return -1; //tid % nCols;
   }
 
   void* map(const unsigned tid, const unsigned fileId, const std::string& input, const unsigned nbufferId, const unsigned hiDegree)
