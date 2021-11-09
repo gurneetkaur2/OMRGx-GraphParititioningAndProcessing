@@ -190,6 +190,7 @@ void* doReduce(void* arg)
 	writer.cWrite(tid, writer.readBufMap[tid].size(), writer.readBufMap[tid].end());
 #endif
     writer.readClear(tid);
+  //fprintf(stderr, "\nthread %u MR going to Update\n", tid);
     mr->updateReduceIter(tid);
   }
   //fprintf(stderr, "thread %u OUT of LOOPS\n", tid);
@@ -217,7 +218,7 @@ void* doInMemoryReduce(void* arg) {
  // fprintf(stderr,"\nTID: %d InMem-MR BEFORE Outer While **********", tid);
 
   while(!mr->getDone(tid)){
-   // fprintf(stderr,"\nTID: %d, InMem-MR Outer While Don: %d **********", tid, don);
+   //fprintf(stderr,"\nTID: %d, InMem-MR Outer While Don: %d **********", tid, don);
     don = true;
     InMemoryReductionState<KeyType, ValueType> state = writer.initiateInMemoryReduce(tid); 
 
@@ -249,6 +250,7 @@ void* doInMemoryReduce(void* arg) {
       mr->reduce(tid, writer.readBufMap[tid]);
 #endif
 
+ // fprintf(stderr, "\nthread %u MR going to Update\n", tid);
     mr->updateReduceIter(tid);
   } //end outer while loop
 

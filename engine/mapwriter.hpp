@@ -158,10 +158,12 @@ void MapWriter<KeyType, ValueType>::writeBuf(const unsigned tid, const KeyType& 
     bufferId = hashKey(key) % nCols;
   unsigned buffer = tid * nCols + bufferId;  // calculate the actual buffer to write in
 
+#ifdef USE_GOMR
   if(hidegree >= hiDegree){  // write rest of the values to another buffer
     bufferId = pid++ % nCols;
     unsigned buffer = tid * nCols + bufferId;  // calculate the actual buffer to write in 
   }
+#endif
 
 /*#ifdef USE_GOMR
   if (nVtces > 0 ){
