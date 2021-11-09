@@ -130,11 +130,11 @@ unsigned setPartitionId(const unsigned tid)
         where[part].at(from[i]) = whereFrom; // partition ID of where 'from' will go
 
       if (from.size() < hiDegree){
-      this->writeBuf(tid, to, from[i], nbufferId, 0);
+      this->writeBuf(tid, to, from[i], bufferId, 0);
 
       }
       else{
-        this->writeBuf(tid, to, from[i], nbufferId, from.size());
+        this->writeBuf(tid, to, from[i], bufferId, from.size());
      // this->writeBuf(tid, lineId, from[i], nbufferId);
       }
      }
@@ -196,8 +196,8 @@ void refineInit(const unsigned tid) {
 //--------------------------------------------------
   void* reduce(const unsigned tid, const InMemoryContainer<KeyType, ValueType>& container){
     //countThreadWords += std::accumulate(values.begin(), values.end(), 0);
-    long double sum = 0.0;
     // iterate each vertex neighbor in adjlist
+   // pthread_barrier_wait(&(barWriteInfo));
    // fprintf(stderr, "\nTID: %d, Reducing values Container Size: %d", tid, container.size());
     unsigned hipart = tid;
     // unsigned whereMax;
@@ -220,14 +220,14 @@ void refineInit(const unsigned tid) {
           continue;
       }
       bool ret = this->checkPIDStarted(tid, hipart, whereMax);
-   fprintf(stderr, "\nFINAL TID: %d, WHEREMAX: %d, Ret: %d !!!", tid, whereMax, ret);
+   efprintf(stderr, "\nFINAL TID: %d, WHEREMAX: %d, Ret: %d !!!", tid, whereMax, ret);
 //      fprintf(stderr, "\nTID: %d, refining with: %d, ret: %d ", tid, whereMax, ret);
       ComputeBECut(tid, gWhere, bndIndMap[tid], container);
       // wait for other threads to compute edgecuts before calculating dvalues values
     // fprintf(stderr, "\nTID: %d, Before BarEDGECUTS ", tid);
- //     pthread_barrier_wait(&(barEdgeCuts)); 
+      pthread_barrier_wait(&(barEdgeCuts)); 
 
-     fprintf(stderr, "\nTID: %d, Computing Gain  Container: %d", tid, container.size());
+     //fprintf(stderr, "\nTID: %d, Computing Gain  Container: %d", tid, container.size());
       if(ret == true){
         int maxG = -1;     
         do{
@@ -239,7 +239,7 @@ void refineInit(const unsigned tid) {
     //  pthread_barrier_wait(&(barWriteInfo)); 
       if(ret == true) {
         //writePartInfo
-     //  fprintf(stderr,"\nTID %d going to write part markMax size: %d ", tid, markMax[hipart].size());
+       efprintf(stderr,"\nTID %d going to write part markMax size: %d ", tid, markMax[hipart].size());
         for(unsigned it=0; it<markMax[hipart].size(); it++){
           unsigned vtx1 = markMax[hipart].at(it);     //it->first;
           unsigned vtx2 = markMin[hipart].at(it);
@@ -253,26 +253,27 @@ void refineInit(const unsigned tid) {
           //changewhere
           where[hipart].at(vtx1) = gWhere[vtx1];
           where[hipart].at(vtx2) = gWhere[vtx2];  
-      //    pthread_mutex_lock(&locks[tid]);
+          pthread_mutex_lock(&locks[tid]);
           where[whereMax].at(vtx1) = gWhere[vtx1];
           where[whereMax].at(vtx2) = gWhere[vtx2];
-        //  pthread_mutex_unlock(&locks[tid]);
+          pthread_mutex_unlock(&locks[tid]);
         }
       }
      // fprintf(stderr, "\nTID: %d, Before BarWriteInfo Reducers: %d ", tid, nReducers);
     // pthread_barrier_wait(&(barWriteInfo));
     //  fprintf(stderr, "\nTID: %d BEFORE pIdsCompleted[%d][%d]: %d ", tid, hipart, whereMax, pIdsCompleted[hipart][whereMax]);
  //TODO: This should be set true after the entire iteration is complete-- problem addressed below by clear()
-	 pIdsCompleted[hipart][whereMax] = true;
+	 pIdsCompleted[hipart][whereMax] = 1; //true;
     //  fprintf(stderr, "\nTID: %d, AFTER pIdsCompleted: %d ", tid, pIdsCompleted[hipart][whereMax]);
 
     }  // end of tid loop
 
-//     pthread_barrier_wait(&(barWriteInfo));
+     pthread_barrier_wait(&(barWriteInfo));
      fprintf(stderr, "\nTID: %d, DONE ", tid);
   //  pthread_barrier_wait(&(barClear));
     // clearing up for next round of fetch from disk. It should be reset for each call to reduce operation so that each batch is refined against other when fetched from disk each time.
     pIdsCompleted[tid].clear();
+    clearMemorystructures(tid);
 //    pIdStarted.clear(); //causes seg fault here
     return NULL;
   }
@@ -282,20 +283,22 @@ void refineInit(const unsigned tid) {
   void* updateReduceIter(const unsigned tid) {
 
       fprintf(stderr, "\nTID: %d, UPDATE reduce ITer ", tid);
-      pthread_barrier_wait(&(barCompute));
+     // pthread_barrier_wait(&(barCompute));
 
-      fprintf(stderr, "\nTID: %d, Going to REFINEINIT ", tid);
-      refineInit(tid);
-      clearMemorystructures(tid);
+     // clearMemorystructures(tid);
 
     ++iteration;
-    if(iteration > this->getIterations()){
-//      fprintf(stderr, "\nTID: %d, Iteration: %d Complete ", tid, iteration);
+    if(iteration >= this->getIterations()){
+      fprintf(stderr, "\nTID: %d, Iteration: %d Complete ", tid, iteration);
       don = true;
        // done.at(tid) = 1;
         //      break;
+      return NULL;
      }
+      this->notDone(tid);
 
+      efprintf(stderr, "\nTID: %d, Going to REFINEINIT ", tid);
+      refineInit(tid);
     fprintf(stderr,"\nTID: %d, iteration: %d ----", tid, iteration);
 
     return NULL;
@@ -305,23 +308,24 @@ void refineInit(const unsigned tid) {
   void* afterReduce(const unsigned tid) {
    // fprintf(stderr, "AfterReduce\n");
     fprintf(stderr, "\nthread %u waiting for others to finish Refine\n", tid);
-    pthread_barrier_wait(&(barAfterRefine));
  
     if(tid == 0)
       this->gCopy(tid, gWhere);
 
-    stime = 0.0;
+    pthread_barrier_wait(&(barAfterRefine));
+
+   stime = 0.0;
     std::string fileName = outputPrefix + std::to_string(tid);
     printParts(tid, fileName.c_str());
     //    ofile.close();
     this->subtractReduceTimes(tid, stime);
 
     //pthread_barrier_wait(&(barClear));
-    refineInit(tid);
-    clearMemorystructures(tid);
+   // refineInit(tid);
+   // clearMemorystructures(tid);
     //bndIndMap[tid].clear();
     //dTable[tid].clear();
-    // totalPECuts[tid] = 0; //will need to reset this once I figure out how to recalculate edge cuts
+     totalPECuts[tid] = 0; //will need to reset this once I figure out how to recalculate edge cuts
     //   bndSet = false;
     //cread(tid); //TODO need to find alternate way
       this->readAfterReduce(tid);
@@ -417,9 +421,9 @@ void refineInit(const unsigned tid) {
   unsigned computeGain(const unsigned tid, const unsigned hipart, const unsigned whereMax, std::vector<unsigned>& markMax, std::vector<unsigned>& markMin, const InMemoryContainer<KeyType, ValueType>& inMemMap){
     int maxG = 0;
     int maxvtx = -1, minvtx = -1; 
-     // fprintf(stderr, "\nTID: %d, Computing GAIN ", tid);
+      fprintf(stderr, "\nTID: %d, Computing GAIN ", tid);
     for (auto it = dTable[hipart].begin(); it != dTable[hipart].end(); ++it) {
-        // fprintf(stderr, "\nTId %d dTable hipart Begin: %d, dTable Size %d ----- " , tid,dTable[hipart].begin(), dTable[hipart].size());
+//         fprintf(stderr, "\nTId %d dTable hipart Begin: %d, dTable hipartSize: %d, whereMax size: %d ----- " , tid, it->first, dTable[hipart].size(), dTable[whereMax].size());
       unsigned src = it->first; 
       std::vector<unsigned>::iterator it_max = std::find (markMax.begin(), markMax.end(), src);
       if(it_max != markMax.end()){
@@ -433,9 +437,10 @@ void refineInit(const unsigned tid) {
     // dont need this (interval based)     auto begin = std::next(dTable[whereMax].begin(), k);
             //fprintf(stderr, "\nTId %d dTable whereMax Begin: %d, dTable Size %d ----- " , tid, dTable[whereMax].begin(), dTable[whereMax].size());
             //         fprintf(stderr,"\nTID %d DTable[%d] values ", tid, whereMax);
-            for (auto it_hi = dTable[whereMax].begin(); it_hi != dTable[whereMax].end(); ++it_hi) {
+            auto it_hi = dTable[whereMax].begin();
+            for ( ; it_hi != dTable[whereMax].end(); ++it_hi) {
               unsigned dst = it_hi->first;
-                 // fprintf(stderr, "\nTID: %d, Computing Gain src: %d, dest: %d ", tid, src, dst);
+                 //fprintf(stderr, "\nTID: %d, Computing Gain src: %d, dest: %d ", tid, src, dst);
                   bool connect = 0;  
                   unsigned dsrc = dTable[hipart][src];
                   unsigned ddst = dTable[whereMax][dst];      
@@ -462,14 +467,15 @@ void refineInit(const unsigned tid) {
                     else
                       currGain = dsrc + ddst - 2;
 
-     //               fprintf(stderr, "\nTID: %d, src: %d, dst: %d, Gain: %d ", tid, src, dst, currGain);
+  //                 fprintf(stderr, "\nTID: %d, src: %d, dst: %d, Gain: %d MaxGain: %d ", tid, src, dst, currGain, maxG);
 
                     if(currGain > maxG){                                                                                            maxG = currGain;
+                   //fprintf(stderr, "\nTID: %d, src: %d, dst: %d, MAXGain: %d ", tid, src, dst, currGain);
                       maxvtx = src;
                       minvtx = dst;
                     }
-                     }
-                  }
+                   } // else
+                  } // if condition dsrc > 0
                   else
                     continue;
                   } // end refinemap for loop
