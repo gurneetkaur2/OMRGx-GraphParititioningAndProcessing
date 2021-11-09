@@ -269,7 +269,7 @@ void refineInit(const unsigned tid) {
     }  // end of tid loop
 
      pthread_barrier_wait(&(barWriteInfo));
-     fprintf(stderr, "\nTID: %d, DONE ", tid);
+     efprintf(stderr, "\nTID: %d, DONE ", tid);
   //  pthread_barrier_wait(&(barClear));
     // clearing up for next round of fetch from disk. It should be reset for each call to reduce operation so that each batch is refined against other when fetched from disk each time.
     pIdsCompleted[tid].clear();
@@ -289,7 +289,7 @@ void refineInit(const unsigned tid) {
 
     ++iteration;
     if(iteration >= this->getIterations()){
-      fprintf(stderr, "\nTID: %d, Iteration: %d Complete ", tid, iteration);
+      efprintf(stderr, "\nTID: %d, Iteration: %d Complete ", tid, iteration);
       don = true;
        // done.at(tid) = 1;
         //      break;
@@ -421,7 +421,7 @@ void refineInit(const unsigned tid) {
   unsigned computeGain(const unsigned tid, const unsigned hipart, const unsigned whereMax, std::vector<unsigned>& markMax, std::vector<unsigned>& markMin, const InMemoryContainer<KeyType, ValueType>& inMemMap){
     int maxG = 0;
     int maxvtx = -1, minvtx = -1; 
-      fprintf(stderr, "\nTID: %d, Computing GAIN ", tid);
+      efprintf(stderr, "\nTID: %d, Computing GAIN ", tid);
     for (auto it = dTable[hipart].begin(); it != dTable[hipart].end(); ++it) {
 //         fprintf(stderr, "\nTId %d dTable hipart Begin: %d, dTable hipartSize: %d, whereMax size: %d ----- " , tid, it->first, dTable[hipart].size(), dTable[whereMax].size());
       unsigned src = it->first; 
