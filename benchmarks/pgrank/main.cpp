@@ -36,8 +36,6 @@ class PageRank : public MapReduce<KeyType, ValueType>
   //static thread_local std::vector<unsigned> prev; // = (nvertices, -1);
   //static thread_local std::vector<unsigned> next; // = (nvertices, -1);
 
-  //std::vector<double>* prev; // = (nvertices, -1);
-  //std::vector<double>* next; // = (nvertices, -1);
 //  std::vector<unsigned> nNbrs; // = (nvertices, -1);
   public:
 
@@ -46,7 +44,7 @@ class PageRank : public MapReduce<KeyType, ValueType>
   }
 
   void writeInit(unsigned nCols, unsigned nVtces){
-    /*prev = new std::vector<double>[nCols];
+   /* prev = new std::vector<double>[nCols];
     next = new std::vector<double>[nCols];
     //nNbrs = new std::vector<unsigned>[nCols];
    // fprintf(stderr, "TID: %d, nvert:  %d \n", tid, nvertices);
