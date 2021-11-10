@@ -1,7 +1,7 @@
 //RUN: ./graphchi.bin ~/work/datasets/inputs/mdual 1 2 2 2000 100 258570 2 10000 test -DUSE_GOMR -DUSE_GRAPHCHI
 #include "data.pb.h"
-#include "edgelist.pb.h"
-#include "adjacencyList.pb.h"
+//#include "edgelist.pb.h"
+//#include "adjacencyList.pb.h"
 //#include "graph.h"
 
 #define USE_NUMERICAL_HASH
@@ -74,7 +74,7 @@ class GraphChi : public MapReduce<KeyType, ValueType>
   static thread_local unsigned iteration;
 
   public:
-  std::vector<IdType> *prOutput;
+ // std::vector<IdType> *prOutput;
 
   void* beforeMap(const unsigned tid) {
     unsigned nCols = this->getCols();
@@ -84,7 +84,7 @@ class GraphChi : public MapReduce<KeyType, ValueType>
 
   void writeInit(unsigned nCols, unsigned nVtces){
       readEdges = new std::vector<Edge>[nCols];
-      prOutput = new std::vector<IdType>[nCols];
+      //prOutput = new std::vector<IdType>[nCols];
       edgeCounter = 0;
       iteration = 0;
       efprintf(stderr,"\nInside writeINIT ************NOT EMPTY Vertices: %d ", nvertices);
@@ -305,7 +305,7 @@ unsigned setPartitionId(const unsigned tid)
     return NULL;
   }
   
-  void printParts(const unsigned tid, std::string fileName) {
+/*  void printParts(const unsigned tid, std::string fileName) {
     ofile.open(fileName);
     assert(ofile.is_open());
     for(unsigned i = 0; i <= nvertices; ++i){
@@ -313,7 +313,7 @@ unsigned setPartitionId(const unsigned tid)
         ofile<<i << "\t" << prOutput[tid][i]<< std::endl;
     }
     ofile.close();
-  }
+  }*/
 };
 
 
