@@ -53,7 +53,7 @@ class Go : public MapReduce<KeyType, ValueType>
   std::map<unsigned, unsigned >* bndIndMap; // TODO:move its declaration here to make it thread local
   // std::map<unsigned, unsigned > refineMap;  // to store the vertices from all partitions to be refined with each other 
   std::vector<unsigned long>* where; // = (nvertices, -1);
-  std::vector<unsigned long> gWhere; // = (nvertices, -1);
+  //std::vector<unsigned long> gWhere; // = (nvertices, -1);
   std::vector<bool>* pIdsCompleted;
   std::vector<unsigned>* markMax;
   std::vector<unsigned>* markMin;
@@ -90,9 +90,9 @@ void writeInit(unsigned nCols, unsigned nVtces){
            where[i].push_back(INIT_VAL);
       }
     }
-    for (unsigned j = 0; j<=nVtces; ++j) {
+   /* for (unsigned j = 0; j<=nVtces; ++j) {
          gWhere.push_back(-1);
-    }
+    }*/
 }
 
 unsigned setPartitionId(const unsigned tid)
@@ -168,9 +168,9 @@ unsigned setPartitionId(const unsigned tid)
     //  unsigned int iters = 0;
     //copy local partition ids to gWhere
    // fprintf(stderr, "\nTID: %d,BEFORE Reducing values \n", tid);
-    if(tid ==0){
+ /*   if(tid ==0){
       this->gCopy(tid, gWhere);
-    }
+    }*/
 
    // fprintf(stderr, "\nTID: %d,BEFORE RefineINIT \n", tid);
     refineInit(tid);
@@ -222,7 +222,7 @@ void refineInit(const unsigned tid) {
       bool ret = this->checkPIDStarted(tid, hipart, whereMax);
    efprintf(stderr, "\nFINAL TID: %d, WHEREMAX: %d, Ret: %d !!!", tid, whereMax, ret);
 //      fprintf(stderr, "\nTID: %d, refining with: %d, ret: %d ", tid, whereMax, ret);
-      ComputeBECut(tid, gWhere, bndIndMap[tid], container);
+      ComputeBECut(tid, bndIndMap[tid], container);
       // wait for other threads to compute edgecuts before calculating dvalues values
     // fprintf(stderr, "\nTID: %d, Before BarEDGECUTS ", tid);
       pthread_barrier_wait(&(barEdgeCuts)); 
@@ -244,19 +244,19 @@ void refineInit(const unsigned tid) {
           unsigned vtx1 = markMax[hipart].at(it);     //it->first;
           unsigned vtx2 = markMin[hipart].at(it);
   //        fprintf(stderr,"\nTID %d whereMax %d vtx1: %d vtx2: %d  ", tid, whereMax, vtx1, vtx2);
-          pthread_mutex_lock(&locks[tid]);
+         /* pthread_mutex_lock(&locks[tid]);
           gWhere.at(vtx1) = whereMax;
           gWhere.at(vtx2) = hipart;
           pthread_mutex_unlock(&locks[tid]);
-          // pthread_mutex_unlock(&locks[tid]);
+         */ // pthread_mutex_unlock(&locks[tid]);
 //          fprintf(stderr, "\nTID: %d, Change Where ", tid);
           //changewhere
-          where[hipart].at(vtx1) = gWhere[vtx1];
-          where[hipart].at(vtx2) = gWhere[vtx2];  
-          pthread_mutex_lock(&locks[tid]);
-          where[whereMax].at(vtx1) = gWhere[vtx1];
-          where[whereMax].at(vtx2) = gWhere[vtx2];
-          pthread_mutex_unlock(&locks[tid]);
+          where[hipart].at(vtx1) = whereMax; //gWhere[vtx1];
+          where[hipart].at(vtx2) = hipart; //gWhere[vtx2];  
+        //  pthread_mutex_lock(&locks[tid]);
+          where[whereMax].at(vtx1) = whereMax; //gWhere[vtx1];
+          where[whereMax].at(vtx2) = hipart; //gWhere[vtx2];
+        //  pthread_mutex_unlock(&locks[tid]);
         }
       }
      // fprintf(stderr, "\nTID: %d, Before BarWriteInfo Reducers: %d ", tid, nReducers);
@@ -309,12 +309,12 @@ void refineInit(const unsigned tid) {
    // fprintf(stderr, "AfterReduce\n");
     fprintf(stderr, "\nthread %u waiting for others to finish Refine\n", tid);
  
-    if(tid == 0)
-      this->gCopy(tid, gWhere);
+  //  if(tid == 0)
+    //  this->gCopy(tid, gWhere);
 
-    pthread_barrier_wait(&(barAfterRefine));
+  //  pthread_barrier_wait(&(barAfterRefine));
 
-   stime = 0.0;
+/*   stime = 0.0;
     std::string fileName = outputPrefix + std::to_string(tid);
     printParts(tid, fileName.c_str());
     //    ofile.close();
@@ -338,7 +338,7 @@ void refineInit(const unsigned tid) {
       fprintf(stderr,"\n Total EdgeCuts: %d\n", this->countTotalPECut(tid));
       //fprintf(stderr, "pagerank: thread %u iteration %d took %.3lf ms to process %llu vertices and %llu edges\n", tid, iteration, timevalToDouble(e) - timevalToDouble(s), nvertices, nedges);
     }
-    pthread_barrier_wait(&(barShutdown));
+  *///  pthread_barrier_wait(&(barShutdown));
 /*	 if (s == 0) {
             printf("Thread %ld passed barrier SHUTDOWN: return value was 0\n",
                     tid);
@@ -370,7 +370,7 @@ void refineInit(const unsigned tid) {
          InMemoryContainer<KeyType, ValueType>& container = this->cRead(tid);
   // fprintf(stderr, "\nTID: %d, Reading Container iSize: %d" , tid, container.size());
 
-      ComputeBECut(tid, gWhere, bndIndMap[tid], container);
+      ComputeBECut(tid, bndIndMap[tid], container);
    } 
 }
 
@@ -381,7 +381,7 @@ void refineInit(const unsigned tid) {
 //   }
 }
   //---------------
-  void ComputeBECut(const unsigned tid, const std::vector<unsigned long>& where, InMemTable& bndind, const InMemoryContainer<KeyType, ValueType>& inMemMap) {
+  void ComputeBECut(const unsigned tid, InMemTable& bndind, const InMemoryContainer<KeyType, ValueType>& inMemMap) {
     IdType src;
     std::vector<unsigned> bndvert;
       //fprintf(stderr, "\nTID: %d, Computing EdgeCuts COntainer Size: %d ", tid, inMemMap.size());
@@ -398,7 +398,7 @@ void refineInit(const unsigned tid) {
       //compute the number of edges cut for every key-values pair in the map
       for(auto it = bndvert.begin(); it != bndvert.end(); ++it) { 
         IdType dst = *it;
-        if( where[dst] != INIT_VAL && where[src] != where[dst] ) {
+        if( where[tid][dst] != INIT_VAL && where[tid][src] != where[tid][dst] ) {
 //	fprintf(stderr,"\nTID: %d, where[%d]: %d != where[%d]: %d ", tid, src, where[src], dst, where[dst]);
           totalPECuts[tid]++;
           costE++;
@@ -407,7 +407,7 @@ void refineInit(const unsigned tid) {
       }
       bndvert.clear();
 
-      //calculate d-values
+      //calculate d-value/
     // fprintf(stderr, "\nTID: %d, Calculate DVals ", tid);
       unsigned costI = nbrs - costE; 
       unsigned dsrc = costE - costI;      // External - Internal cost
@@ -494,7 +494,7 @@ void refineInit(const unsigned tid) {
   }
 
 
-  void printParts(const unsigned tid, std::string fileName) {
+/*  void printParts(const unsigned tid, std::string fileName) {
     //       std::cout<<std::endl<<"Partition "<< tid <<std::endl;
     //  std::string outputPrefix = "testing";
     ofile.open(fileName);
@@ -507,7 +507,7 @@ void refineInit(const unsigned tid) {
       }
     }
     ofile.close();
-  }
+  }*/
  //---------------
               unsigned countTotalPECut(const unsigned tid) {
                 //totalCuts = 0;
@@ -560,7 +560,7 @@ void refineInit(const unsigned tid) {
                 }
 
 //-----------------------------------
-                void gCopy(const unsigned tid, std::vector<unsigned long>& gWhere){
+                /*void gCopy(const unsigned tid, std::vector<unsigned long>& gWhere){
                   bool first = 1;
                   for(unsigned i=0; i<nReducers; ++i){
                     for(unsigned j=0; j<=nvertices; ++j){
@@ -578,7 +578,7 @@ void refineInit(const unsigned tid) {
                     first = 0;
                   }
                 }
-
+*/
 //-----------------------------------
 
                 bool checkPIDStarted(const unsigned tid, const unsigned hipart, const unsigned whereMax) {
