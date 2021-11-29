@@ -150,11 +150,21 @@ unsigned setPartitionId(const unsigned tid)
     while(inputStream >> token){
       from.push_back(token);
     }
-    std::sort(from.begin(), from.end()); // using default comparator
+
+    //std::sort(from.begin(), from.end()); // using default comparator
+    unsigned bufferId = hashKey(to) % this->getCols(); //nReducers;
+    unsigned part = tid % this->getCols(); //nReducers;
+
+    if(where[part].at(to) == INIT_VAL)
+      where[part].at(to) = bufferId;
 
     for(unsigned i = 0; i < from.size(); ++i){
  //     fprintf(stderr,"\tTID: %d, src: %zu, dst: %zu, vrank: %f, rank: %f nNbrs: %u", tid, e.src, e.dst, e.vRank, e.rank, e.numNeighbors);
-      this->writeBuf(tid, to, from[i], nbufferId, 0);
+       unsigned whereFrom = hashKey(from[i]) % this->getCols(); //nReducers;
+       if(where[part].at(from[i]) == INIT_VAL)
+         where[part].at(from[i]) = whereFrom;
+
+	this->writeBuf(tid, to, from[i], nbufferId, 0);
     }
 
     return NULL;
@@ -201,7 +211,7 @@ unsigned setPartitionId(const unsigned tid)
     efprintf(stderr, "Initialize sub-graph: %u\n", part);
     timeval s, e;
     gettimeofday(&s, NULL);
-    fprintf(stderr,"\nPART: %u, CONTAINER elements LowerBound: %d ", tid, ii[part].lbIndex);
+    efprintf(stderr,"\nPART: %u, CONTAINER elements LowerBound: %d ", tid, ii[part].lbIndex);
    
     for(auto it = container.begin(); it != container.end(); it++){
      //   readEdges[part][it->first];
@@ -225,7 +235,7 @@ unsigned setPartitionId(const unsigned tid)
    ii[part].indexCount = indexCount;
    ii[part].ubEdgeCount = edgeCounter;
    ii[part].edgeCount = ii[part].ubEdgeCount - ii[part].lbEdgeCount;
-    fprintf(stderr, "\nInitializing subgraph for part %u took: %.3lf readEdges Size: %u\n", part, tmDiff(s, e), readEdges[tid].size());
+    efprintf(stderr, "\nInitializing subgraph for part %u took: %.3lf readEdges Size: %u\n", part, tmDiff(s, e), readEdges[tid].size());
    //coarsest graph
    std::map<KeyType, std::vector<ValueType>> last_cgraph; 
    last_cgraph = coarsen(tid); //, readEdges[tid]);
@@ -270,7 +280,7 @@ unsigned setPartitionId(const unsigned tid)
    //assert(false);
    // store the coarsened graph on disk
    
-   fprintf(stderr,"\n\n****tid: %d Finished refining *** ", tid); 
+   efprintf(stderr,"\n\n****tid: %d Finished refining *** ", tid); 
       pthread_barrier_wait(&(barCompute));
     readEdges[tid].clear();
       clearMemorystructures(tid);
@@ -328,7 +338,7 @@ std::map<KeyType, std::vector<ValueType>> MATCH_RM(const unsigned tid, std::map<
    //(std::chrono::system_clock::now().time_since_epoch().count()) % nvertices;
    // Shuffling our array
    std::shuffle(perm, perm + container.size(), std::default_random_engine(seed));
-   fprintf(stderr,"\ntid: %d Inside MATCH_RM ", tid); 
+   efprintf(stderr,"\ntid: %d Inside MATCH_RM ", tid); 
   size_t nunmatched=0;
   std::map<KeyType, std::vector<ValueType>> cgraph;
 
@@ -390,7 +400,7 @@ std::map<KeyType, std::vector<ValueType>> MATCH_RM(const unsigned tid, std::map<
 }
  
  std::map<KeyType, std::vector<ValueType>> CreateCoarseGraph(const unsigned tid, std::map<KeyType, std::vector<ValueType>> container, IdType cnvtxs, std::map<IdType, IdType>& cmap, unsigned level){
- fprintf(stderr,"\nTID: %d inside createCoarse graph size: %u ", tid, container.size());
+ efprintf(stderr,"\nTID: %d inside createCoarse graph size: %u ", tid, container.size());
    IdType *htable;
    std::map<KeyType, std::vector<ValueType>> cgraph;
    IdType k, j, v, u, m, nedges, cnedges;
@@ -421,7 +431,7 @@ std::map<KeyType, std::vector<ValueType>> MATCH_RM(const unsigned tid, std::map<
       }
 
       if(v != u && u < ii[tid].ubIndex){
-   fprintf(stderr,"\nTID: %d before v!=u ", tid);
+   efprintf(stderr,"\nTID: %d before v!=u ", tid);
         auto uit = container.find(u);
         if(uit != container.end()){
           for(unsigned vit=0; vit <uit->second.size(); vit++){  //adjncy of u
@@ -435,21 +445,21 @@ std::map<KeyType, std::vector<ValueType>> MATCH_RM(const unsigned tid, std::map<
     // fprintf(stderr,"\nTID: %d, v!=u element: %d k: %u, nedges: %u match: %u htable: %u ", tid,uit->second[vit], k, nedges, match[uit->second[vit]], htable[k]);
           }
         }
-   fprintf(stderr,"\nTID: %d before htable!=-1 cnvtxs: %u ", tid, cnvtxs);
+   efprintf(stderr,"\nTID: %d before htable!=-1 cnvtxs: %u ", tid, cnvtxs);
        if ((htable[cnvtxs]) != -1) {
            htable[cnvtxs] = -1;
        }
      }
       /* Zero out the htable */
-   fprintf(stderr,"\nTID: %d before zero out cnvtxs: %u, nedges: %u ", tid, cnvtxs, nedges);
+   efprintf(stderr,"\nTID: %d before zero out cnvtxs: %u, nedges: %u ", tid, cnvtxs, nedges);
       /*for (j=0; j<nedges; j++){
          fprintf(stderr,"\nTID: %d Inside zero out nedges: %u htable: %d ", tid, cnvtxs, htable[j]);
           if(htable != -1)
             htable[j] = -1;
       }*/
    
-    fprintf(stderr,"\nTID: %d cnedges: %u level: %d ", tid, cnedges, level);
-    fprintf(stderr,"\nTID: %d endIndex: %d, it->first: %d ", tid, gcd[tid][level].endIndex, it->first);
+    efprintf(stderr,"\nTID: %d cnedges: %u level: %d ", tid, cnedges, level);
+    efprintf(stderr,"\nTID: %d endIndex: %d, it->first: %d ", tid, gcd[tid][level].endIndex, it->first);
      if(gcd[tid][level].endIndex < it->first) 
        gcd[tid][level].endIndex = it->first;
 
@@ -699,18 +709,18 @@ void clearRefineStructures(){
     fprintf(stderr,"\nTID: %d Updating reduce Iteration ", tid);
 
     edgeCounter = 0;
-    ++iteration;
+    //++iteration;
    // if(tid==0)
       //clearMemorystructures(tid);
 
-    if(iteration > this->getIterations()){
+   /* if(iteration > this->getIterations()){
        efprintf(stderr, "\nTID: %d, Iteration: %d Complete ", tid, iteration-1);
        don = true;
        return NULL;
     }
     this->notDone(tid);
      // assign next to prev for the next iteration , copy to prev of all threads
-     
+     */
     efprintf(stderr,"\nTID: %d, iteration: %d ----", tid, iteration);
    return NULL;
   }
