@@ -160,19 +160,19 @@ class MtMetis : public MapReduce<KeyType, ValueType>
     }
 
     //std::sort(from.begin(), from.end()); // using default comparator
-    unsigned bufferId = hashKey(to) % this->getCols();
+    unsigned bufferId = hashKey(to) % this->getCols(); //nReducers;
     unsigned part = tid % this->getCols(); //nReducers;
 
     if(where[part].at(to) == INIT_VAL)
       where[part].at(to) = bufferId;
 
     for(unsigned i = 0; i < from.size(); ++i){
-      //     fprintf(stderr,"\tTID: %d, src: %zu, dst: %zu, vrank: %f, rank: %f nNbrs: %u", tid, e.src, e.dst, e.vRank, e.rank, e.numNeighbors);
-      unsigned whereFrom = hashKey(from[i]) % this->getCols();//nReducers;
-      if(where[part].at(from[i]) == INIT_VAL)
-        where[part].at(from[i]) = whereFrom;
+ //     fprintf(stderr,"\tTID: %d, src: %zu, dst: %zu, vrank: %f, rank: %f nNbrs: %u", tid, e.src, e.dst, e.vRank, e.rank, e.numNeighbors);
+       unsigned whereFrom = hashKey(from[i]) % this->getCols(); //nReducers;
+       if(where[part].at(from[i]) == INIT_VAL)
+         where[part].at(from[i]) = whereFrom;
 
-      this->writeBuf(tid, to, from[i], nbufferId, 0);
+	this->writeBuf(tid, to, from[i], nbufferId, 0);
     }
 
     return NULL;
@@ -203,37 +203,37 @@ class MtMetis : public MapReduce<KeyType, ValueType>
     perm[i] = i;
     cmap[i] = -1; //TODO: it may give trouble if the vertices are not from beginning
     }
-    unsigned seed = (nvertices*tid+1) % nvertices; 
-    //(std::chrono::system_clock::now().time_since_epoch().count()) % nvertices;
-    // Shuffling our array
-    std::shuffle(perm, perm + nvertices, std::default_random_engine(seed));
-     */ }
+   unsigned seed = (nvertices*tid+1) % nvertices; 
+   //(std::chrono::system_clock::now().time_since_epoch().count()) % nvertices;
+   // Shuffling our array
+   std::shuffle(perm, perm + nvertices, std::default_random_engine(seed));
+ */ }
 
-    void* reduce(const unsigned tid, const InMemoryContainer<KeyType, ValueType>& container) {
+  void* reduce(const unsigned tid, const InMemoryContainer<KeyType, ValueType>& container) {
+    
+    efprintf(stderr, "\nTID:%d Starting Reduce\n", tid);
+    unsigned part = tid;
+    IdType indexCount = 0;
 
-      efprintf(stderr, "\nTID:%d Starting Reduce\n", tid);
-      unsigned part = tid;
-      IdType indexCount = 0;
-
-      ii[part].lbEdgeCount = edgeCounter;
-      assert(container.size() > 0);
-      auto it_first = container.begin();
-      ii[part].lbIndex = it_first->first;
-
-      IdType lbIndex = container.begin()->first;
-      efprintf(stderr, "Initialize sub-graph: %u\n", part);
-      timeval s, e;
-      gettimeofday(&s, NULL);
-      fprintf(stderr,"\nPART: %u, CONTAINER elements LowerBound: %d ", tid, ii[part].lbIndex);
-
-      for(auto it = container.begin(); it != container.end(); it++){
-        //   readEdges[part][it->first];
-        //          fprintf(stderr,"\nPART: %u, CONTAINER elements Key: %u, values: ", tid, it->first);
-        for(int k=0; k<it->second.size(); k++) {
-          readEdges[part][it->first].push_back(it->second[k]);
-          //        fprintf(stderr,"\t %ul ", it->second[k]);
-          //fprintf(stderr,"\nPART: %d readEdges elements key: %zu value: %zu ", part, it->second[k].dst, it->second[k].src);
-          edgeCounter++; 
+    ii[part].lbEdgeCount = edgeCounter;
+    assert(container.size() > 0);
+    auto it_first = container.begin();
+    ii[part].lbIndex = it_first->first;
+    
+    IdType lbIndex = container.begin()->first;
+    efprintf(stderr, "Initialize sub-graph: %u\n", part);
+    timeval s, e;
+    gettimeofday(&s, NULL);
+    efprintf(stderr,"\nPART: %u, CONTAINER elements LowerBound: %d ", tid, ii[part].lbIndex);
+   
+    for(auto it = container.begin(); it != container.end(); it++){
+     //   readEdges[part][it->first];
+//          fprintf(stderr,"\nPART: %u, CONTAINER elements Key: %u, values: ", tid, it->first);
+      for(int k=0; k<it->second.size(); k++) {
+           readEdges[part][it->first].push_back(it->second[k]);
+  //        fprintf(stderr,"\t %ul ", it->second[k]);
+        //fprintf(stderr,"\nPART: %d readEdges elements key: %zu value: %zu ", part, it->second[k].dst, it->second[k].src);
+         edgeCounter++; 
         }
         match[tid][it->first] = -1;
         //fprintf(stderr,"\ntid: %d, match[i]: %d, unmatched: %d ", tid, match[i], UNMATCHED);
@@ -241,33 +241,33 @@ class MtMetis : public MapReduce<KeyType, ValueType>
         cmap[tid][it->first] = -1; //TODO: it may give trouble if the vertices are not from beginning
         indexCount++;
         ii[part].ubIndex = it->first;
-      }
-      efprintf(stderr, "\nTID: %d done adding container \n", tid);
-      gettimeofday(&e, NULL);
-      assert(readEdges != NULL);
-      ii[part].indexCount = indexCount;
-      ii[part].ubEdgeCount = edgeCounter;
-      ii[part].edgeCount = ii[part].ubEdgeCount - ii[part].lbEdgeCount;
-      fprintf(stderr, "\nInitializing subgraph for part %u took: %.3lf readEdges Size: %u\n", part, tmDiff(s, e), readEdges[tid].size());
-      //coarsest graph
-      std::map<KeyType, std::vector<ValueType>> last_cgraph; 
-      last_cgraph = coarsen(tid); //, readEdges[tid]);
+    }
+    efprintf(stderr, "\nTID: %d done adding container \n", tid);
+    gettimeofday(&e, NULL);
+    assert(readEdges != NULL);
+   ii[part].indexCount = indexCount;
+   ii[part].ubEdgeCount = edgeCounter;
+   ii[part].edgeCount = ii[part].ubEdgeCount - ii[part].lbEdgeCount;
+    efprintf(stderr, "\nInitializing subgraph for part %u took: %.3lf readEdges Size: %u\n", part, tmDiff(s, e), readEdges[tid].size());
+   //coarsest graph
+   std::map<KeyType, std::vector<ValueType>> last_cgraph; 
+   last_cgraph = coarsen(tid); //, readEdges[tid]);
 
-      initpartition(tid, last_cgraph);
-
-      std::map<KeyType, std::vector<ValueType>> cgraph(last_cgraph);
-      std::map<KeyType, std::vector<ValueType>> fgraph;
-      unsigned level = ii[tid].levels;
-      do{
-        efprintf(stderr, "\n*****Tid: %d Refining LEVEL: %u *****\n", tid, level);
-        // refining the coarsest level graph which is in memory and fetching the finer levels from disk later
-        refinepartition(tid, cgraph);
-        //fprintf(stderr,"\nTID: %d Waiting after refine ", tid);
-        pthread_barrier_wait(&(barWait));
-        //  if(tid ==0){
-        //     this->gCopy(tid, gWhere);
-        //  }
-        //project partition to finer level 
+   initpartition(tid, last_cgraph);
+ 
+   std::map<KeyType, std::vector<ValueType>> cgraph(last_cgraph);
+   std::map<KeyType, std::vector<ValueType>> fgraph;
+   unsigned level = ii[tid].levels;
+   do{
+      efprintf(stderr, "\n*****Tid: %d Refining LEVEL: %u *****\n", tid, level);
+      // refining the coarsest level graph which is in memory and fetching the finer levels from disk later
+      refinepartition(tid, cgraph);
+    //fprintf(stderr,"\nTID: %d Waiting after refine ", tid);
+      pthread_barrier_wait(&(barWait));
+     //  if(tid ==0){
+     //     this->gCopy(tid, gWhere);
+     //  }
+      //project partition to finer level 
         IdType k;
         //for(IdType i=0; i<gcd[tid][level].cnvtxs; i++){
         efprintf(stderr,"\nTID: %d Projecting partition ", tid);
@@ -293,7 +293,7 @@ class MtMetis : public MapReduce<KeyType, ValueType>
         //assert(false);
         // store the coarsened graph on disk
 
-        fprintf(stderr,"\n\n****tid: %d Finished refining *** ", tid); 
+        efprintf(stderr,"\n\n****tid: %d Finished refining *** ", tid); 
         pthread_barrier_wait(&(barCompute));
         readEdges[tid].clear();
         clearMemorystructures(tid);
@@ -351,7 +351,7 @@ class MtMetis : public MapReduce<KeyType, ValueType>
         //(std::chrono::system_clock::now().time_since_epoch().count()) % nvertices;
         // Shuffling our array
         std::shuffle(perm, perm + container.size(), std::default_random_engine(seed));
-        fprintf(stderr,"\ntid: %d Inside MATCH_RM ", tid); 
+        efprintf(stderr,"\ntid: %d Inside MATCH_RM ", tid); 
         size_t nunmatched=0;
         std::map<KeyType, std::vector<ValueType>> cgraph;
 
@@ -413,7 +413,7 @@ class MtMetis : public MapReduce<KeyType, ValueType>
       }
 
       std::map<KeyType, std::vector<ValueType>> CreateCoarseGraph(const unsigned tid, std::map<KeyType, std::vector<ValueType>> container, IdType cnvtxs, std::map<IdType, IdType>& cmap, unsigned level){
-        fprintf(stderr,"\nTID: %d inside createCoarse graph size: %u ", tid, container.size());
+        efprintf(stderr,"\nTID: %d inside createCoarse graph size: %u ", tid, container.size());
         IdType *htable;
         std::map<KeyType, std::vector<ValueType>> cgraph;
         IdType k, j, v, u, m, nedges, cnedges;
@@ -444,7 +444,7 @@ class MtMetis : public MapReduce<KeyType, ValueType>
           }
 
           if(v != u && u < ii[tid].ubIndex){
-            fprintf(stderr,"\nTID: %d before v!=u ", tid);
+            efprintf(stderr,"\nTID: %d before v!=u ", tid);
             auto uit = container.find(u);
             if(uit != container.end()){
               for(unsigned vit=0; vit <uit->second.size(); vit++){  //adjncy of u
@@ -458,21 +458,21 @@ class MtMetis : public MapReduce<KeyType, ValueType>
                 // fprintf(stderr,"\nTID: %d, v!=u element: %d k: %u, nedges: %u match: %u htable: %u ", tid,uit->second[vit], k, nedges, match[uit->second[vit]], htable[k]);
               }
             }
-            fprintf(stderr,"\nTID: %d before htable!=-1 cnvtxs: %u ", tid, cnvtxs);
+            efprintf(stderr,"\nTID: %d before htable!=-1 cnvtxs: %u ", tid, cnvtxs);
             if ((htable[cnvtxs]) != -1) {
               htable[cnvtxs] = -1;
             }
           }
           /* Zero out the htable */
-          fprintf(stderr,"\nTID: %d before zero out cnvtxs: %u, nedges: %u ", tid, cnvtxs, nedges);
+          efprintf(stderr,"\nTID: %d before zero out cnvtxs: %u, nedges: %u ", tid, cnvtxs, nedges);
           /*for (j=0; j<nedges; j++){
             fprintf(stderr,"\nTID: %d Inside zero out nedges: %u htable: %d ", tid, cnvtxs, htable[j]);
             if(htable != -1)
             htable[j] = -1;
             }*/
 
-          fprintf(stderr,"\nTID: %d cnedges: %u level: %d ", tid, cnedges, level);
-          fprintf(stderr,"\nTID: %d endIndex: %d, it->first: %d ", tid, gcd[tid][level].endIndex, it->first);
+          efprintf(stderr,"\nTID: %d cnedges: %u level: %d ", tid, cnedges, level);
+          efprintf(stderr,"\nTID: %d endIndex: %d, it->first: %d ", tid, gcd[tid][level].endIndex, it->first);
           if(gcd[tid][level].endIndex < it->first) 
             gcd[tid][level].endIndex = it->first;
 
@@ -748,31 +748,31 @@ class MtMetis : public MapReduce<KeyType, ValueType>
       if(gWhere[i] != -1 && (gWhere[i] == tid || gWhere[i] == tid % nparts)){
       ofile<<i << "\t" << gWhere[i]<< std::endl;
       }
-      }
-      // }
-      ofile.close();
-      }
-       */
-      //=======================
-      void* updateReduceIter(const unsigned tid) {
-        fprintf(stderr,"\nTID: %d Updating reduce Iteration ", tid);
+    }
+ // }
+  ofile.close();
+  }
+*/
+//=======================
+  void* updateReduceIter(const unsigned tid) {
+    fprintf(stderr,"\nTID: %d Updating reduce Iteration ", tid);
 
-        edgeCounter = 0;
-        ++iteration;
-        // if(tid==0)
-        //clearMemorystructures(tid);
+    edgeCounter = 0;
+    //++iteration;
+   // if(tid==0)
+      //clearMemorystructures(tid);
 
-        if(iteration > this->getIterations()){
-          efprintf(stderr, "\nTID: %d, Iteration: %d Complete ", tid, iteration-1);
-          don = true;
-          return NULL;
-        }
-        this->notDone(tid);
-        // assign next to prev for the next iteration , copy to prev of all threads
-
-        efprintf(stderr,"\nTID: %d, iteration: %d ----", tid, iteration);
-        return NULL;
-      }
+   /* if(iteration > this->getIterations()){
+       efprintf(stderr, "\nTID: %d, Iteration: %d Complete ", tid, iteration-1);
+       don = true;
+       return NULL;
+    }
+    this->notDone(tid);
+     // assign next to prev for the next iteration , copy to prev of all threads
+     */
+    efprintf(stderr,"\nTID: %d, iteration: %d ----", tid, iteration);
+   return NULL;
+  }
 
       void* afterReduce(const unsigned tid) {
         fprintf(stderr,"\nTID: %d After Reduce ", tid);
