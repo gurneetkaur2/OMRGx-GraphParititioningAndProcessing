@@ -221,6 +221,7 @@ void* doInMemoryReduce(void* arg) {
    efprintf(stderr,"\nTID: %d, InMem-MR Outer While Don: %d **********", tid, don);
     don = true;
 #ifdef USE_GOMR
+    InMemoryContainer<KeyType, ValueType> rcache;
     writer.initiateInMemoryRefine(tid);
     pthread_barrier_wait(&(mr->barReduce));
     if(tid == 0)  //Need this condition when used in multi thread envt.
@@ -233,15 +234,40 @@ void* doInMemoryReduce(void* arg) {
 
 #ifdef USE_GOMR
 //   bool execLoop = 1;
+   unsigned counter = 0; 
    while(true){
-      bool execLoop = writer.readInMem(tid);
-      if(execLoop == false) {
-        mr->reduce(tid, writer.readBufMap[tid]);
-        writer.readBufMap[tid].erase(writer.readBufMap[tid].begin(), writer.readBufMap[tid].end());
-        break;
+     bool execLoop = writer.readInMem(tid);
+      //  fprintf(stderr,"\nTID: %d EXEC: %d ", tid, execLoop);
+       if(execLoop == false) {
+         //read all the records from readBufMap until end
+        for(auto it= writer.readBufMap[tid].begin(); it!=writer.readBufMap[tid].end(); ++it){
+          if (counter >= 20){
+            mr->reduce(tid, rcache);
+            rcache.clear();
+            counter = 0;
+          }
+          rcache[it->first] = it->second;
+          counter++;
+        }
+        // rcache.insert(writer.readBufMap[tid].begin(), writer.readBufMap[tid].end());
+          //mr->reduce(tid, writer.readBufMap[tid]);
+        //writer.readBufMap[tid].erase(writer.readBufMap[tid].begin(), writer.readBufMap[tid].end());
+         writer.readBufMap[tid].clear();
+         break;
+       }
+      InMemoryContainerIterator<KeyType, ValueType> it;
+      for(it= writer.readBufMap[tid].begin(); it!=writer.readBufMap[tid].end(); ++it){
+        if (counter >= 20){
+          mr->reduce(tid, rcache);
+          rcache.clear();
+          counter = 0;
+        }
+        //mr->reduce(tid, writer.readBufMap[tid]);
+        rcache[it->first] = it->second;
+        counter++;
       }
-      mr->reduce(tid, writer.readBufMap[tid]);
-      writer.readBufMap[tid].erase(writer.readBufMap[tid].begin(), writer.readBufMap[tid].end());
+      writer.readBufMap[tid].clear();
+      //writer.readBufMap[tid].erase(writer.readBufMap[tid].begin(), writer.readBufMap[tid].end());
    }
 
 #else

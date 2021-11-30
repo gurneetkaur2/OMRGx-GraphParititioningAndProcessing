@@ -3,9 +3,10 @@
 #else
 #include "data.pb.h"
 #endif
-#define INTERVAL 20
+
 #define USE_NUMERICAL_HASH
 #define INIT_VAL 5000
+#define INTERVAL 20
 #include "../../engine/mapreduce.hpp"
 #include <iostream>
 #include <sstream>
@@ -53,7 +54,7 @@ class Go : public MapReduce<KeyType, ValueType>
   std::map<unsigned, unsigned >* bndIndMap; // TODO:move its declaration here to make it thread local
   // std::map<unsigned, unsigned > refineMap;  // to store the vertices from all partitions to be refined with each other 
   std::vector<unsigned long>* where; // = (nvertices, -1);
-  //std::vector<unsigned long> gWhere; // = (nvertices, -1);
+  std::vector<unsigned long> gWhere; // = (nvertices, -1);
   std::vector<bool>* pIdsCompleted;
   std::vector<unsigned>* markMax;
   std::vector<unsigned>* markMin;
@@ -66,45 +67,45 @@ class Go : public MapReduce<KeyType, ValueType>
 
   void* beforeMap(const unsigned tid) {
     //next = new std::vector<double>[nmappers];
-   /* unsigned part = tid % this->getCols();
-    fprintf(stderr, "TID: %d, nvert:  %d, part: %d \n", tid, nvertices, part);
-    for (unsigned i = 0; i<=nvertices; ++i) {
-      // fprintf(stderr, "TID: %d, Inside where i: %d \n", tid, i);
-      where[part].push_back(INIT_VAL);
-      // fprintf(stderr, "TID: %d,Before init gWhere \n", tid);
-      if(tid==0){
-        gWhere.push_back(-1);
-      }
+    /* unsigned part = tid % this->getCols();
+       fprintf(stderr, "TID: %d, nvert:  %d, part: %d \n", tid, nvertices, part);
+       for (unsigned i = 0; i<=nvertices; ++i) {
+    // fprintf(stderr, "TID: %d, Inside where i: %d \n", tid, i);
+    where[part].push_back(INIT_VAL);
+    // fprintf(stderr, "TID: %d,Before init gWhere \n", tid);
+    if(tid==0){
+    gWhere.push_back(-1);
+    }
     }
     //  fprintf(stderr, "\n TID: %d, BEFORE key: %d prev: %f next: %f rank: %.2f \n", tid, i, prev[tid][i], next[tid][i], (1/nvertices));
-     fprintf(stderr, "TID: %d, After assigning init values \n", tid);
-   */
+    fprintf(stderr, "TID: %d, After assigning init values \n", tid);
+     */
     return NULL;
   }
 
-void writeInit(unsigned nCols, unsigned nVtces){
-   where = new std::vector<unsigned long>[nCols]; // nReducers cause problem here
-       // fprintf(stderr,"\nInside writeINIT ************ Cols: %d, Vertices: %d ", nCols, nVtces);
-   for (unsigned i = 0; i<nCols; ++i) {
+  void writeInit(unsigned nCols, unsigned nVtces){
+    where = new std::vector<unsigned long>[nCols]; // nReducers cause problem here
+    // fprintf(stderr,"\nInside writeINIT ************ Cols: %d, Vertices: %d ", nCols, nVtces);
+    for (unsigned i = 0; i<nCols; ++i) {
       for (unsigned j = 0; j<=nVtces; ++j) {
-           where[i].push_back(INIT_VAL);
+        where[i].push_back(INIT_VAL);
       }
     }
-   /* for (unsigned j = 0; j<=nVtces; ++j) {
-         gWhere.push_back(-1);
-    }*/
-}
+    for (unsigned j = 0; j<=nVtces; ++j) {
+      gWhere.push_back(-1);
+    }
+  }
 
-unsigned setPartitionId(const unsigned tid)
+  unsigned setPartitionId(const unsigned tid)
   {
-     unsigned nCols = this->getCols();
-     //fprintf(stderr,"\nTID: %d writing to partition: %d " , tid, tid % nCols);
-     return -1; //tid % nCols;
+    unsigned nCols = this->getCols();
+    //fprintf(stderr,"\nTID: %d writing to partition: %d " , tid, tid % nCols);
+    return -1; //tid % nCols;
   }
 
 
   void* map(const unsigned tid, const unsigned fileId, const std::string& input, const unsigned nbufferId, const unsigned hiDegree)
-  //void* map(const unsigned tid, const std::string& input, const unsigned lineId, const unsigned nbufferId)
+    //void* map(const unsigned tid, const std::string& input, const unsigned lineId, const unsigned nbufferId)
   {
     //    fprintf(stderr, "TID: %d,Inside Map \n", tid);
     //pthread_barrier_wait(&(barClear));
@@ -124,25 +125,25 @@ unsigned setPartitionId(const unsigned tid)
       where[part].at(to) = bufferId;
 
     for(unsigned i = 0; i < from.size(); ++i){
-                  //   fprintf(stderr,"\nVID: %d FROM: %zu size: %zu", to, from[i], from.size());
+      //   fprintf(stderr,"\nVID: %d FROM: %zu size: %zu", to, from[i], from.size());
       unsigned whereFrom = hashKey(from[i]) % nReducers;
       if(where[part].at(from[i]) == INIT_VAL)
         where[part].at(from[i]) = whereFrom; // partition ID of where 'from' will go
 
       if (from.size() < hiDegree){
-      this->writeBuf(tid, to, from[i], bufferId, 0);
+        this->writeBuf(tid, to, from[i], bufferId, 0);
 
       }
       else{
         this->writeBuf(tid, to, from[i], bufferId, from.size());
-     // this->writeBuf(tid, lineId, from[i], nbufferId);
+        // this->writeBuf(tid, lineId, from[i], nbufferId);
       }
-     }
+    }
 
     return NULL;
   }
 
-     
+
   void* initRefineStructs() {
     //initialize the locks to be used for synchronization
     for(unsigned i=0; i<nReducers; ++i) {
@@ -162,170 +163,242 @@ unsigned setPartitionId(const unsigned tid)
     //  std::map<unsigned, unsigned> maxPair = new std::map<unsigned, unsigned>[this->nReducers];
     totalPECuts = new unsigned long long[nReducers];
     // fetchPIds = new std::set<unsigned>[nReducers];
-   }
+  }
 
   void* beforeReduce(const unsigned tid) {
     //  unsigned int iters = 0;
     //copy local partition ids to gWhere
-   // fprintf(stderr, "\nTID: %d,BEFORE Reducing values \n", tid);
- /*   if(tid ==0){
+     fprintf(stderr, "\nTID: %d,BEFORE Reducing values \n", tid);
+    if(tid ==0){
       this->gCopy(tid, gWhere);
-    }*/
+    }
 
-   // fprintf(stderr, "\nTID: %d,BEFORE RefineINIT \n", tid);
+    // fprintf(stderr, "\nTID: %d,BEFORE RefineINIT \n", tid);
     refineInit(tid);
   }
 
-//--------------------------------------------------
-void refineInit(const unsigned tid) {
-   // fprintf(stderr, "\nTID: %d,INSIDE RefineINIT \n", tid);
+  //--------------------------------------------------
+  void refineInit(const unsigned tid) {
+    // fprintf(stderr, "\nTID: %d,INSIDE RefineINIT \n", tid);
     for (unsigned i = 0; i < nReducers; i++) {
-          fetchPIds[tid].insert(i);  //partition ids - 0,1,2 .. 
-          pIdsCompleted[tid].push_back(false);
-     }
-//fprintf(stderr,"\ntTID %d, RefineINit fetchPID size: %d ----", tid, fetchPIds[tid].size());
-  //   bndIndMap[tid].clear();
-   //  dTable[tid].clear();
-  //   readNext[tid] = 0;
-  // clearMemorystructures(tid);
-     totalPECuts[tid] = 0;
-     //bndSet = false;
-     totalCuts = 0; 
-}
+      fetchPIds[tid].insert(i);  //partition ids - 0,1,2 .. 
+      pIdsCompleted[tid].push_back(false);
+    }
+    //fprintf(stderr,"\ntTID %d, RefineINit fetchPID size: %d ----", tid, fetchPIds[tid].size());
+    //   bndIndMap[tid].clear();
+    //  dTable[tid].clear();
+    //   readNext[tid] = 0;
+    // clearMemorystructures(tid);
+    totalPECuts[tid] = 0;
+    //bndSet = false;
+    totalCuts = 0; 
+  }
 
-//--------------------------------------------------
+  //--------------------------------------------------
   void* reduce(const unsigned tid, const InMemoryContainer<KeyType, ValueType>& container){
-   // pthread_barrier_wait(&(barWriteInfo));
-   // fprintf(stderr, "\nTID: %d, Reducing values Container Size: %d", tid, container.size());
+    //countThreadWords += std::accumulate(values.begin(), values.end(), 0);
+    // iterate each vertex neighbor in adjlist
+    // pthread_barrier_wait(&(barWriteInfo));
+     efprintf(stderr, "\nTID: %d, Reducing values Container Size: %d", tid, container.size());
+  /*  unsigned counter = 0;
+    InMemoryContainer<KeyType, ValueType> inMap;
     unsigned hipart = tid;
-    for(auto it = fetchPIds[tid].begin(); it != fetchPIds[tid].end(); ++it) { 
-    //for(auto wherei=0; wherei < nReducers; wherei++){ //start TID loop
-      unsigned whereMax = *it; 
-     // fprintf(stderr, "\nTID: %d, WHEREMAX: %d ", tid, whereMax);
-      if(whereMax == tid){
-//      fprintf(stderr, "\nTID: %d pIdsCompleted[%d][%d]: %d ", tid, hipart, whereMax, pIdsCompleted[hipart][whereMax]);
-        pIdsCompleted[tid][*it] = true;
-  //    fprintf(stderr, "\nTID: %d going to NEXT Iter", tid);
-        continue;
-      }
-      else if (hipart < nReducers && whereMax >= nReducers){
+    for(auto it = container.begin(); it != container.end(); it++){
+     if (counter >= INTERVAL){
+        ComputeBECut(tid, gWhere, bndIndMap[tid], inMap);          
+    */ unsigned hipart = tid;
+       ComputeBECut(tid, gWhere, bndIndMap[tid], container);          
+    // unsigned whereMax;
+      for(auto it = fetchPIds[tid].begin(); it != fetchPIds[tid].end(); ++it) { 
+      //for(auto wherei=0; wherei < nReducers; wherei++){ //start TID loop
+         unsigned whereMax = *it; 
+      // fprintf(stderr, "\nTID: %d, WHEREMAX: %d ", tid, whereMax);
+         if(whereMax == tid){
+        //      fprintf(stderr, "\nTID: %d pIdsCompleted[%d][%d]: %d ", tid, hipart, whereMax, pIdsCompleted[hipart][whereMax]);
+            pIdsCompleted[tid][*it] = true;
+        //    fprintf(stderr, "\nTID: %d going to NEXT Iter", tid);
+            continue;
+         }
+         else if (hipart < nReducers && whereMax >= nReducers){
           pIdsCompleted[tid][*it] = true;
           continue;
-      }
-      else if ( hipart >= nReducers && whereMax < nReducers) {
+         }
+         else if ( hipart >= nReducers && whereMax < nReducers) {
           pIdsCompleted[tid][*it] = true;
           continue;
-      }
-      bool ret = this->checkPIDStarted(tid, hipart, whereMax);
-   efprintf(stderr, "\nFINAL TID: %d, WHEREMAX: %d, Ret: %d !!!", tid, whereMax, ret);
-//      fprintf(stderr, "\nTID: %d, refining with: %d, ret: %d ", tid, whereMax, ret);
-      ComputeBECut(tid, bndIndMap[tid], container);
+         }
+        bool ret = this->checkPIDStarted(tid, hipart, whereMax);
+        efprintf(stderr, "\nFINAL TID: %d, WHEREMAX: %d, Ret: %d !!!", tid, whereMax, ret);
+      //      fprintf(stderr, "\nTID: %d, refining with: %d, ret: %d ", tid, whereMax, ret);
+      //ComputeBECut(tid, gWhere, bndIndMap[tid], container);
       // wait for other threads to compute edgecuts before calculating dvalues values
-    // fprintf(stderr, "\nTID: %d, Before BarEDGECUTS ", tid);
-      pthread_barrier_wait(&(barEdgeCuts)); 
+      // fprintf(stderr, "\nTID: %d, Before BarEDGECUTS ", tid);
+      //pthread_barrier_wait(&(barEdgeCuts)); 
 
-     //fprintf(stderr, "\nTID: %d, Computing Gain  Container: %d", tid, container.size());
-      if(ret == true){
-        int maxG = -1;     
-        do{
-          maxG = computeGain(tid, hipart, whereMax, markMax[hipart], markMin[hipart], container);
-    //  fprintf(stderr, "\nTID: %d, MaxG > 0: %d", tid, maxG);
-        } while(maxG > 0);  //end do
-      } // end if ret
+      efprintf(stderr, "\nTID: %d, Computing Gain  Container: %d", tid, container.size());
+        if(ret == true){
+          int maxG = -1;     
+          do{
+            maxG = computeGain(tid, hipart, whereMax, markMax[hipart], markMin[hipart], container);
+          //  fprintf(stderr, "\nTID: %d, MaxG > 0: %d", tid, maxG);
+          } while(maxG > 0);  //end do
+        } // end if ret
 
-    //  pthread_barrier_wait(&(barWriteInfo)); 
-      if(ret == true) {
+      //  pthread_barrier_wait(&(barWriteInfo)); 
+        if(ret == true) {
         //writePartInfo
-       efprintf(stderr,"\nTID %d going to write part markMax size: %d ", tid, markMax[hipart].size());
+        efprintf(stderr,"\nTID %d going to write part markMax size: %d ", tid, markMax[hipart].size());
         for(unsigned it=0; it<markMax[hipart].size(); it++){
           unsigned vtx1 = markMax[hipart].at(it);     //it->first;
           unsigned vtx2 = markMin[hipart].at(it);
-  //        fprintf(stderr,"\nTID %d whereMax %d vtx1: %d vtx2: %d  ", tid, whereMax, vtx1, vtx2);
-//          fprintf(stderr, "\nTID: %d, Change Where ", tid);
+          //        fprintf(stderr,"\nTID %d whereMax %d vtx1: %d vtx2: %d  ", tid, whereMax, vtx1, vtx2);
+          pthread_mutex_lock(&locks[tid]);
+          gWhere.at(vtx1) = whereMax;
+          gWhere.at(vtx2) = hipart;
+          pthread_mutex_unlock(&locks[tid]);
+          // pthread_mutex_unlock(&locks[tid]);
+          //          fprintf(stderr, "\nTID: %d, Change Where ", tid);
           //changewhere
-          where[hipart].at(vtx1) = whereMax; //gWhere[vtx1];
-          where[hipart].at(vtx2) = hipart; //gWhere[vtx2];  
-        //  pthread_mutex_lock(&locks[tid]);
-          where[whereMax].at(vtx1) = whereMax; //gWhere[vtx1];
-          where[whereMax].at(vtx2) = hipart; //gWhere[vtx2];
-        //  pthread_mutex_unlock(&locks[tid]);
+          where[hipart].at(vtx1) = gWhere[vtx1];
+          where[hipart].at(vtx2) = gWhere[vtx2];  
+          pthread_mutex_lock(&locks[tid]);
+          where[whereMax].at(vtx1) = gWhere[vtx1];
+          where[whereMax].at(vtx2) = gWhere[vtx2];
+          pthread_mutex_unlock(&locks[tid]);
         }
       }
- //TODO: This should be set true after the entire iteration is complete-- problem addressed below by clear()
-	 pIdsCompleted[hipart][whereMax] = 1; //true;
-    //  fprintf(stderr, "\nTID: %d, AFTER pIdsCompleted: %d ", tid, pIdsCompleted[hipart][whereMax]);
-    }  // end of tid loop
-     pthread_barrier_wait(&(barWriteInfo));
-     efprintf(stderr, "\nTID: %d, DONE ", tid);
-  //  pthread_barrier_wait(&(barClear));
+      // fprintf(stderr, "\nTID: %d, Before BarWriteInfo Reducers: %d ", tid, nReducers);
+      // pthread_barrier_wait(&(barWriteInfo));
+      //  fprintf(stderr, "\nTID: %d BEFORE pIdsCompleted[%d][%d]: %d ", tid, hipart, whereMax, pIdsCompleted[hipart][whereMax]);
+      //TODO: This should be set true after the entire iteration is complete-- problem addressed below by clear()
+      pIdsCompleted[hipart][whereMax] = 1; //true;
+      //  fprintf(stderr, "\nTID: %d, AFTER pIdsCompleted: %d ", tid, pIdsCompleted[hipart][whereMax]);
+      }  // end of tid loop
+    /*  counter = 0;
+      }//end if counter loop
+      else{
+          inMap[it->first] = it->second;
+          counter++;
+      }
+     } //end for container loop
+*/
+    pthread_barrier_wait(&(barWriteInfo));
+    efprintf(stderr, "\nTID: %d, DONE ", tid);
+    //  pthread_barrier_wait(&(barClear));
     // clearing up for next round of fetch from disk. It should be reset for each call to reduce operation so that each batch is refined against other when fetched from disk each time.
     pIdsCompleted[tid].clear();
     clearMemorystructures(tid);
-//    pIdStarted.clear(); //causes seg fault here
+    //    pIdStarted.clear(); //causes seg fault here
     return NULL;
-  }
+    }
 
-  // void computeBECut(const unsigned tid, std::map<unsigned, unsigned> refineMap)
+    // void computeBECut(const unsigned tid, std::map<unsigned, unsigned> refineMap)
 
-  void* updateReduceIter(const unsigned tid) {
+    void* updateReduceIter(const unsigned tid) {
 
       fprintf(stderr, "\nTID: %d, UPDATE reduce ITer ", tid);
-     // pthread_barrier_wait(&(barCompute));
+      // pthread_barrier_wait(&(barCompute));
 
-     // clearMemorystructures(tid);
+      // clearMemorystructures(tid);
 
-    ++iteration;
-    if(iteration >= this->getIterations()){
-      efprintf(stderr, "\nTID: %d, Iteration: %d Complete ", tid, iteration);
-      don = true;
-       // done.at(tid) = 1;
+      ++iteration;
+      if(iteration >= this->getIterations()){
+        efprintf(stderr, "\nTID: %d, Iteration: %d Complete ", tid, iteration);
+        don = true;
+        // done.at(tid) = 1;
         //      break;
-      return NULL;
-     }
-      this->notDone(tid);
+        return NULL;
+      }
+     // this->notDone(tid);
 
       efprintf(stderr, "\nTID: %d, Going to REFINEINIT ", tid);
-      refineInit(tid);
-    fprintf(stderr,"\nTID: %d, iteration: %d ----", tid, iteration);
+     // refineInit(tid);
+      fprintf(stderr,"\nTID: %d, iteration: %d ----", tid, iteration);
 
-    return NULL;
-  }
-
-
-  void* afterReduce(const unsigned tid) {
-   // fprintf(stderr, "AfterReduce\n");
-    fprintf(stderr, "\nthread %u waiting for others to finish Refine\n", tid);
- 
-    if(tid == 0){
-    clearRefineStructures();
+      return NULL;
     }
-  return NULL;
+
+
+    void* afterReduce(const unsigned tid) {
+      // fprintf(stderr, "AfterReduce\n");
+      fprintf(stderr, "\nthread %u waiting for others to finish Refine\n", tid);
+
+      if(tid == 0)
+        this->gCopy(tid, gWhere);
+
+      pthread_barrier_wait(&(barAfterRefine));
+
+     /* stime = 0.0;
+      std::string fileName = outputPrefix + std::to_string(tid);
+      printParts(tid, fileName.c_str());
+      //    ofile.close();
+      this->subtractReduceTimes(tid, stime);
+
+      //pthread_barrier_wait(&(barClear));
+      // refineInit(tid);
+      // clearMemorystructures(tid);
+      //bndIndMap[tid].clear();
+      //dTable[tid].clear();
+      totalPECuts[tid] = 0; //will need to reset this once I figure out how to recalculate edge cuts
+      //   bndSet = false;
+      //cread(tid); //TODO need to find alternate way
+      this->readAfterReduce(tid);
+      pthread_barrier_wait(&(barRefine));
+
+      if(tid == 0){
+        totalCuts = 0;
+        //  time_refine += getTimer();
+
+        fprintf(stderr,"\n Total EdgeCuts: %d\n", this->countTotalPECut(tid));
+        //fprintf(stderr, "pagerank: thread %u iteration %d took %.3lf ms to process %llu vertices and %llu edges\n", tid, iteration, timevalToDouble(e) - timevalToDouble(s), nvertices, nedges);
+      }
+      pthread_barrier_wait(&(barShutdown));
+      *//*   if (s == 0) {
+           printf("Thread %ld passed barrier SHUTDOWN: return value was 0\n",
+           tid);
+
+           } else if (s == PTHREAD_BARRIER_SERIAL_THREAD) {
+           printf("Thread %ld passed barrier SHUTDOWN: return value was "
+           "PTHREAD_BARRIER_SERIAL_THREAD\n", tid);
+
+           usleep(100000);
+           printf("\n");
+
+           }
+           else {        
+           printf("\npthread_barrier_wait (%ld)", tid);
+           }
+       */
+      if(tid == 0){
+        clearRefineStructures();
+      }
+      return NULL;
+    }
+
+    //---------------
+    void readAfterReduce(const unsigned tid) {
+      // this->cRead(tid);
+      don = false;
+      // fprintf(stderr,"\nTID: %d COmputeEC TotalPECUTs: %d ", tid, totalPECuts[tid]);
+      while(!this->getDone(tid)){
+        InMemoryContainer<KeyType, ValueType>& container = this->cRead(tid);
+        // fprintf(stderr, "\nTID: %d, Reading Container iSize: %d" , tid, container.size());
+
+        ComputeBECut(tid, gWhere, bndIndMap[tid], container);
+      } 
+    }
+
+    //---------------
+    void writeAfterReduce(const unsigned tid, const InMemoryContainer<KeyType, ValueType>& container) {
+      this->cWrite(tid); // container.size(), container.end());  
+      //return container; 
+      //   }
   }
-
   //---------------
-  void readAfterReduce(const unsigned tid) {
-   // this->cRead(tid);
-   don = false;
-// fprintf(stderr,"\nTID: %d COmputeEC TotalPECUTs: %d ", tid, totalPECuts[tid]);
-   while(!this->getDone(tid)){
-         InMemoryContainer<KeyType, ValueType>& container = this->cRead(tid);
-  // fprintf(stderr, "\nTID: %d, Reading Container iSize: %d" , tid, container.size());
-
-      ComputeBECut(tid, bndIndMap[tid], container);
-   } 
-}
-
-  //---------------
-  void writeAfterReduce(const unsigned tid, const InMemoryContainer<KeyType, ValueType>& container) {
-   this->cWrite(tid); // container.size(), container.end());	
-   //return container; 
-//   }
-}
-  //---------------
-  void ComputeBECut(const unsigned tid, InMemTable& bndind, const InMemoryContainer<KeyType, ValueType>& inMemMap) {
+  void ComputeBECut(const unsigned tid, const std::vector<unsigned long>& where, InMemTable& bndind, const InMemoryContainer<KeyType, ValueType>& inMemMap) {
     IdType src;
     std::vector<unsigned> bndvert;
-      //fprintf(stderr, "\nTID: %d, Computing EdgeCuts COntainer Size: %d ", tid, inMemMap.size());
+    //fprintf(stderr, "\nTID: %d, Computing EdgeCuts COntainer Size: %d ", tid, inMemMap.size());
 
     for (InMemoryContainerConstIterator<KeyType, ValueType> it = inMemMap.begin(); it != inMemMap.end(); ++it) {
       src = it->first;
@@ -339,8 +412,8 @@ void refineInit(const unsigned tid) {
       //compute the number of edges cut for every key-values pair in the map
       for(auto it = bndvert.begin(); it != bndvert.end(); ++it) { 
         IdType dst = *it;
-        if( where[tid][dst] != INIT_VAL && where[tid][src] != where[tid][dst] ) {
-//	fprintf(stderr,"\nTID: %d, where[%d]: %d != where[%d]: %d ", tid, src, where[src], dst, where[dst]);
+        if( where[dst] != INIT_VAL && where[src] != where[dst] ) {
+          //  fprintf(stderr,"\nTID: %d, where[%d]: %d != where[%d]: %d ", tid, src, where[src], dst, where[dst]);
           totalPECuts[tid]++;
           costE++;
           bndind[dst]++; // = costE ;     
@@ -348,23 +421,23 @@ void refineInit(const unsigned tid) {
       }
       bndvert.clear();
 
-      //calculate d-value/
-    // fprintf(stderr, "\nTID: %d, Calculate DVals ", tid);
+      //calculate d-values
+      // fprintf(stderr, "\nTID: %d, Calculate DVals ", tid);
       unsigned costI = nbrs - costE; 
       unsigned dsrc = costE - costI;      // External - Internal cost
       dTable[tid][src] = dsrc; 
     } //end Compute edgecuts main Loop
     //   pthread_barrier_wait(&(barCompute)); //wait for the dvalues from all the threads to be populated
-     // fprintf(stderr, "\nTID: %d,Finished Computing EdgeCuts ****** ", tid);
+    // fprintf(stderr, "\nTID: %d,Finished Computing EdgeCuts ****** ", tid);
   }
 
   //---------------
   unsigned computeGain(const unsigned tid, const unsigned hipart, const unsigned whereMax, std::vector<unsigned>& markMax, std::vector<unsigned>& markMin, const InMemoryContainer<KeyType, ValueType>& inMemMap){
     int maxG = 0;
     int maxvtx = -1, minvtx = -1; 
-      efprintf(stderr, "\nTID: %d, Computing GAIN ", tid);
+    efprintf(stderr, "\nTID: %d, Computing GAIN ", tid);
     for (auto it = dTable[hipart].begin(); it != dTable[hipart].end(); ++it) {
-//         fprintf(stderr, "\nTId %d dTable hipart Begin: %d, dTable hipartSize: %d, whereMax size: %d ----- " , tid, it->first, dTable[hipart].size(), dTable[whereMax].size());
+      //         fprintf(stderr, "\nTId %d dTable hipart Begin: %d, dTable hipartSize: %d, whereMax size: %d ----- " , tid, it->first, dTable[hipart].size(), dTable[whereMax].size());
       unsigned src = it->first; 
       std::vector<unsigned>::iterator it_max = std::find (markMax.begin(), markMax.end(), src);
       if(it_max != markMax.end()){
@@ -375,67 +448,67 @@ void refineInit(const unsigned tid) {
         if(it_map != inMemMap.end()){
           if(dTable[whereMax].size() > 0 ){
             //     fprintf(stderr, "\nBREAKING dTable size check TId %d ----- " , tid);
-    // dont need this (interval based)     auto begin = std::next(dTable[whereMax].begin(), k);
+            // dont need this (interval based)     auto begin = std::next(dTable[whereMax].begin(), k);
             //fprintf(stderr, "\nTId %d dTable whereMax Begin: %d, dTable Size %d ----- " , tid, dTable[whereMax].begin(), dTable[whereMax].size());
             //         fprintf(stderr,"\nTID %d DTable[%d] values ", tid, whereMax);
             auto it_hi = dTable[whereMax].begin();
             for ( ; it_hi != dTable[whereMax].end(); ++it_hi) {
               unsigned dst = it_hi->first;
-                 //fprintf(stderr, "\nTID: %d, Computing Gain src: %d, dest: %d ", tid, src, dst);
-                  bool connect = 0;  
-                  unsigned dsrc = dTable[hipart][src];
-                  unsigned ddst = dTable[whereMax][dst];      
-                  if(dsrc >= 0 || ddst >= 0){
-                   // fprintf(stderr, "\nTID: %d, Computing Gain Positive d-val ", tid);
-                    std::vector<unsigned>::iterator it_min = std::find (markMin.begin(), markMin.end(), dst);
-                    if(it_min != markMin.end()){     // check if the dst is in the masked vertices
-        //              fprintf(stderr, "\nTID: %d, Computing Gain DST: %d is masked ", tid, dst);
-                      continue;
-                    }
-                  else{
-                    if (std::find(it_map->second.begin(), it_map->second.end(), dst) == it_map->second.end()){
-                        connect = 0;
-                    }
-                    else
-                      connect = 1;
-                    // check if src is a boundary vertex, then calculate gain
-                   // auto it_bnd = bndIndMap[whereMax].find(src);
-                    // if(it_bnd != bndIndMap[whereMax].end()){  
-                    //fprintf(stderr, "\nTID: %d, Computing Gain SRC: %d is boundary vertex ", tid, src);
-                    int currGain = -1;
-                    if(!connect)
-                      currGain = dsrc + ddst;
-                    else
-                      currGain = dsrc + ddst - 2;
-
-  //                 fprintf(stderr, "\nTID: %d, src: %d, dst: %d, Gain: %d MaxGain: %d ", tid, src, dst, currGain, maxG);
-
-                    if(currGain > maxG){                                                                                            maxG = currGain;
-                   //fprintf(stderr, "\nTID: %d, src: %d, dst: %d, MAXGain: %d ", tid, src, dst, currGain);
-                      maxvtx = src;
-                      minvtx = dst;
-                    }
-                   } // else
-                  } // if condition dsrc > 0
+              //fprintf(stderr, "\nTID: %d, Computing Gain src: %d, dest: %d ", tid, src, dst);
+              bool connect = 0;  
+              unsigned dsrc = dTable[hipart][src];
+              unsigned ddst = dTable[whereMax][dst];      
+              if(dsrc >= 0 || ddst >= 0){
+                // fprintf(stderr, "\nTID: %d, Computing Gain Positive d-val ", tid);
+                std::vector<unsigned>::iterator it_min = std::find (markMin.begin(), markMin.end(), dst);
+                if(it_min != markMin.end()){     // check if the dst is in the masked vertices
+                  //              fprintf(stderr, "\nTID: %d, Computing Gain DST: %d is masked ", tid, dst);
+                  continue;
+                }
+                else{
+                  if (std::find(it_map->second.begin(), it_map->second.end(), dst) == it_map->second.end()){
+                    connect = 0;
+                  }
                   else
-                    continue;
-                  } // end refinemap for loop
-                } // end check for masked vertices
+                    connect = 1;
+                  // check if src is a boundary vertex, then calculate gain
+                  // auto it_bnd = bndIndMap[whereMax].find(src);
+                  // if(it_bnd != bndIndMap[whereMax].end()){  
+                  //fprintf(stderr, "\nTID: %d, Computing Gain SRC: %d is boundary vertex ", tid, src);
+                  int currGain = -1;
+                  if(!connect)
+                    currGain = dsrc + ddst;
+                  else
+                    currGain = dsrc + ddst - 2;
+
+                  //                 fprintf(stderr, "\nTID: %d, src: %d, dst: %d, Gain: %d MaxGain: %d ", tid, src, dst, currGain, maxG);
+
+                  if(currGain > maxG){                                                                                            maxG = currGain;
+                    //fprintf(stderr, "\nTID: %d, src: %d, dst: %d, MAXGain: %d ", tid, src, dst, currGain);
+                    maxvtx = src;
+                    minvtx = dst;
+                  }
+                } // else
+                } // if condition dsrc > 0
+                else
+                  continue;
+              } // end refinemap for loop
+            } // end check for masked vertices
           }
         }
       }
-    //}
+      //}
       if(maxvtx != -1 && minvtx != -1){
-       //fprintf(stderr, "\nTID: %d, MASKING src: %d, dst: %d, Gain: %d ", tid, maxvtx, minvtx, maxG);
+        //fprintf(stderr, "\nTID: %d, MASKING src: %d, dst: %d, Gain: %d ", tid, maxvtx, minvtx, maxG);
         markMax.push_back(maxvtx);
         markMin.push_back(minvtx);
         return maxG;
       }
-     return -1;
+      return -1;
   }
 
 
-/*  void printParts(const unsigned tid, std::string fileName) {
+  void printParts(const unsigned tid, std::string fileName) {
     //       std::cout<<std::endl<<"Partition "<< tid <<std::endl;
     //  std::string outputPrefix = "testing";
     ofile.open(fileName);
@@ -448,193 +521,194 @@ void refineInit(const unsigned tid) {
       }
     }
     ofile.close();
-  }*/
- //---------------
-              unsigned countTotalPECut(const unsigned tid) {
-                //totalCuts = 0;
-                for(unsigned i=0; i<nReducers; i++){
-                  //for(auto i=fetchPIds.begin(); i != fetchPIds.end(); ++i){
- //		fprintf(stderr,"\nTID: %d TotalPECUTs: %d ", tid, totalPECuts[i]);
-                  totalCuts += totalPECuts[i];
-                }
+  }
+  //---------------
+  unsigned countTotalPECut(const unsigned tid) {
+    //totalCuts = 0;
+    for(unsigned i=0; i<nReducers; i++){
+      //for(auto i=fetchPIds.begin(); i != fetchPIds.end(); ++i){
+      //    fprintf(stderr,"\nTID: %d TotalPECUTs: %d ", tid, totalPECuts[i]);
+      totalCuts += totalPECuts[i];
+    }
 
-                return (totalCuts/2);
-                }
+    return (totalCuts/2);
+    }
 
-//-----------------------------------
-                void clearRefineStructures(){
-                  for (unsigned i = 0; i < nReducers; i++){
-                  //  bndIndMap[i].clear();
-                    // refineMap[i].clear();
-                  }
-    pthread_barrier_destroy(&barRefine);
-    pthread_barrier_destroy(&barCompute);
-    pthread_barrier_destroy(&barEdgeCuts);
-    pthread_barrier_destroy(&barWriteInfo);
-    pthread_barrier_destroy(&barClear);
-    pthread_barrier_destroy(&barShutdown);
-    pthread_barrier_destroy(&barAfterRefine);
+    //-----------------------------------
+    void clearRefineStructures(){
+      for (unsigned i = 0; i < nReducers; i++){
+        //  bndIndMap[i].clear();
+        // refineMap[i].clear();
+      }
+      pthread_barrier_destroy(&barRefine);
+      pthread_barrier_destroy(&barCompute);
+      pthread_barrier_destroy(&barEdgeCuts);
+      pthread_barrier_destroy(&barWriteInfo);
+      pthread_barrier_destroy(&barClear);
+      pthread_barrier_destroy(&barShutdown);
+      pthread_barrier_destroy(&barAfterRefine);
 
-                  //  dTable->clear();
-                  markMax->clear();
-                  markMin->clear();
-                  fetchPIds->clear();
-                  pIdsCompleted->clear();
-                  delete[] totalPECuts;
-                  delete[] bndIndMap;
-                  delete[] dTable;
-                  delete[] markMax;
-                  delete[] markMin;
-                  delete[] pIdsCompleted;
-                  delete[] where;
-                  delete[] fetchPIds;
-                }
-//-----------------------------------
-                void clearMemorystructures(const unsigned tid){
+      //  dTable->clear();
+      markMax->clear();
+      markMin->clear();
+      fetchPIds->clear();
+      pIdsCompleted->clear();
+      delete[] totalPECuts;
+      delete[] bndIndMap;
+      delete[] dTable;
+      delete[] markMax;
+      delete[] markMin;
+      delete[] pIdsCompleted;
+      delete[] where;
+      delete[] fetchPIds;
+    }
+    //-----------------------------------
+    void clearMemorystructures(const unsigned tid){
 
-                  bndIndMap[tid].clear();
-                  markMax[tid].clear();
-                  markMin[tid].clear();
-                  dTable[tid].clear();
-                 // pIdsCompleted[tid].clear();
+      bndIndMap[tid].clear();
+      markMax[tid].clear();
+      markMin[tid].clear();
+      dTable[tid].clear();
+      // pIdsCompleted[tid].clear();
 
-                }
+    }
 
-//-----------------------------------
-                /*void gCopy(const unsigned tid, std::vector<unsigned long>& gWhere){
-                  bool first = 1;
-                  for(unsigned i=0; i<nReducers; ++i){
-                    for(unsigned j=0; j<=nvertices; ++j){
-                      if(first){  // All Values of first thread will be copied
-                        //         fprintf(stderr,"\nwhere[%d][%d]: %d,", i, j, where[i][j]);
-                        gWhere[j] = where[i][j];
-                      }
-                      else {
-                        if(where[i][j] != INIT_VAL){
-                          gWhere[j] = where[i][j];
-                        }
-                      }
-                //             fprintf(stderr,"\nGWHERE[%d]: %d", j, gWhere[j]);
-                    }
-                    first = 0;
-                  }
-                }
-*/
-//-----------------------------------
+    //-----------------------------------
+    void gCopy(const unsigned tid, std::vector<unsigned long>& gWhere){
+      bool first = 1;
+      for(unsigned i=0; i<nReducers; ++i){
+        for(unsigned j=0; j<=nvertices; ++j){
+          if(first){  // All Values of first thread will be copied
+            //         fprintf(stderr,"\nwhere[%d][%d]: %d,", i, j, where[i][j]);
+            gWhere[j] = where[i][j];
+          }
+          else {
+            if(where[i][j] != INIT_VAL){
+              gWhere[j] = where[i][j];
+            }
+          }
+          //             fprintf(stderr,"\nGWHERE[%d]: %d", j, gWhere[j]);
+        }
+        first = 0;
+      }
+    }
 
-                bool checkPIDStarted(const unsigned tid, const unsigned hipart, const unsigned whereMax) {
-                  bool ret = false;
-                  pthread_mutex_lock(&locks[tid]);
-                  auto it_hi = pIdStarted.find(hipart);
-                  auto it_wh = pIdStarted.find(whereMax);
-                  if (it_hi != pIdStarted.end() || it_wh != pIdStarted.end()){   //that means key is present
-                    unsigned key1 = it_hi->first;
-                    unsigned val1 = it_hi->second;
-                    unsigned key2 = it_wh->first;
-                    unsigned val2 = it_wh->second;
-                    if((key1 == hipart && val1 == whereMax) || (key2 == whereMax && val2 == hipart)){
-                           //fprintf(stderr,"\n TID %d hipart %d is already present\n", tid, hipart);
-                      ret = false;
-                    }
-                    else
-                      ret = true;  //key present with a diff value
-                  }
-                  else{
-                    pIdStarted.emplace(hipart, whereMax);
-                    ret = true;     // this will compute gain
-                  }
+    //-----------------------------------
 
-                  pthread_mutex_unlock(&locks[tid]);
-                  return ret;
-                }
-              };
+    bool checkPIDStarted(const unsigned tid, const unsigned hipart, const unsigned whereMax) {
+      bool ret = false;
+      pthread_mutex_lock(&locks[tid]);
+      auto it_hi = pIdStarted.find(hipart);
+      auto it_wh = pIdStarted.find(whereMax);
+      if (it_hi != pIdStarted.end() || it_wh != pIdStarted.end()){   //that means key is present
+        unsigned key1 = it_hi->first;
+        unsigned val1 = it_hi->second;
+        unsigned key2 = it_wh->first;
+        unsigned val2 = it_wh->second;
+        if((key1 == hipart && val1 == whereMax) || (key2 == whereMax && val2 == hipart)){
+          //fprintf(stderr,"\n TID %d hipart %d is already present\n", tid, hipart);
+          ret = false;
+        }
+        else
+          ret = true;  //key present with a diff value
+      }
+      else{
+        pIdStarted.emplace(hipart, whereMax);
+        ret = true;     // this will compute gain
+      }
 
-              template <typename KeyType, typename ValueType>
-                thread_local std::ofstream Go<KeyType, ValueType>::ofile;
-              template <typename KeyType, typename ValueType>
-                thread_local double Go<KeyType, ValueType>::stime;
+      pthread_mutex_unlock(&locks[tid]);
+      return ret;
+    }
+  };
 
-              template <typename KeyType, typename ValueType>
-                void* combine(const KeyType& key, std::vector<ValueType>& to, const std::vector<ValueType>& from) {
-                  to.insert(to.end(), from.begin(), from.end());
-                  return NULL;
-                }
+  template <typename KeyType, typename ValueType>
+    thread_local std::ofstream Go<KeyType, ValueType>::ofile;
+  template <typename KeyType, typename ValueType>
+    thread_local double Go<KeyType, ValueType>::stime;
 
-              //-------------------------------------------------
-              int main(int argc, char** argv)
-              {
-                Go<unsigned, unsigned> go;
+  template <typename KeyType, typename ValueType>
+    void* combine(const KeyType& key, std::vector<ValueType>& to, const std::vector<ValueType>& from) {
+      to.insert(to.end(), from.begin(), from.end());
+      return NULL;
+    }
 
-                //  std::string select = "";
-                /*  while(true){
-                    std::cout << "Please select `GOMR` for graph Processing or `OMR` for regular MR application" << std::endl;
-                    std::cin >> select;
-                    if (select == "OMR" | select == "GOMR")
-                    break;
-                    }*/
-                //  std::cout << std::endl;
+  //-------------------------------------------------
+  int main(int argc, char** argv)
+  {
+    Go<unsigned, unsigned> go;
 
-                if (argc < 8)
-                {
-                  //   std::cout << "Usage: " << argv[0] << " <folderpath> <gb> <nmappers> <nreducers> <batchsize> <kitems>" << std::endl;
-                  //   return 0;
-                  // }
-                  // else if (select == "GOMR" && argc != 9) { 
-                std::cout << "Usage: " << argv[0] << " <folderpath> <gb> <nmappers> <nreducers> <batchsize> <kitems> <optional - nvertices> <optional - partitions> <optional - max degree> <optional - partition output prefix>" << std::endl;
+    //  std::string select = "";
+    /*  while(true){
+        std::cout << "Please select `GOMR` for graph Processing or `OMR` for regular MR application" << std::endl;
+        std::cin >> select;
+        if (select == "OMR" | select == "GOMR")
+        break;
+        }*/
+    //  std::cout << std::endl;
 
-                return 0;
-              }
+    if (argc < 8)
+    {
+      //   std::cout << "Usage: " << argv[0] << " <folderpath> <gb> <nmappers> <nreducers> <batchsize> <kitems>" << std::endl;
+      //   return 0;
+      // }
+      // else if (select == "GOMR" && argc != 9) { 
+    std::cout << "Usage: " << argv[0] << " <folderpath> <gb> <nmappers> <nreducers> <batchsize> <kitems> <optional - nvertices> <optional - partitions> <optional - max degree> <optional - partition output prefix>" << std::endl;
 
-              std::string folderpath = argv[1];
-              int gb = atoi(argv[2]);
-              nmappers = atoi(argv[3]);
-              nReducers = atoi(argv[4]); // here nreducers = npartitions
-              // int npartitions = 2;
-              int npartitions;
-              int hiDegree;
-              //int nvertices;
-              //  if (select == "OMR")
-              //    nvertices = -1;
+    return 0;
+  }
+
+  std::string folderpath = argv[1];
+  int gb = atoi(argv[2]);
+  nmappers = atoi(argv[3]);
+  nReducers = atoi(argv[4]); // here nreducers = npartitions
+  // int npartitions = 2;
+  int npartitions;
+  int hiDegree;
+  //int nvertices;
+  //  if (select == "OMR")
+  //    nvertices = -1;
 #ifdef USE_GOMR
-              nvertices = atoi(argv[7]);
-              if(atoi(argv[9]) > 0)
-                hiDegree = atoi(argv[9]);
-              else
-                hiDegree = 0;
-              npartitions = atoi(argv[8]); //partitions
-              outputPrefix = argv[10];
+  nvertices = atoi(argv[7]);
+  if(atoi(argv[9]) > 0)
+    hiDegree = atoi(argv[9]);
+  else
+    hiDegree = 0;
+  npartitions = atoi(argv[8]); //partitions
+  outputPrefix = argv[10];
 #else
-              nvertices = -1;
-              hiDegree = -1;
-              npartitions = 2; ///partitions = nreducers -- iterations if not using GOMR
+  nvertices = -1;
+  hiDegree = -1;
+  npartitions = 2; ///partitions = nreducers -- iterations if not using GOMR
 #endif
 
-              int batchSize = atoi(argv[5]);
-              int kitems = atoi(argv[6]);
+  int batchSize = atoi(argv[5]);
+  int kitems = atoi(argv[6]);
 
-              assert(batchSize > 0);
-              //pthread_mutex_init(&countTotal, NULL);
+  assert(batchSize > 0);
+  //pthread_mutex_init(&countTotal, NULL);
 
-             // nReducers = nreducers;
-    //initialize barriers
-    pthread_barrier_init(&barRefine, NULL, nReducers);
-    pthread_barrier_init(&barCompute, NULL, nReducers);
-    pthread_barrier_init(&barEdgeCuts, NULL, nReducers);
-    pthread_barrier_init(&barWriteInfo, NULL, nReducers);
-    pthread_barrier_init(&barClear, NULL, nReducers);
-    pthread_barrier_init(&barShutdown, NULL, nReducers);
-    pthread_barrier_init(&barAfterRefine, NULL, nReducers);
-              go.writeInit(nReducers, nvertices);
+  // nReducers = nreducers;
+  //initialize barriers
+  pthread_barrier_init(&barRefine, NULL, nReducers);
+  pthread_barrier_init(&barCompute, NULL, nReducers);
+  pthread_barrier_init(&barEdgeCuts, NULL, nReducers);
+  pthread_barrier_init(&barWriteInfo, NULL, nReducers);
+  pthread_barrier_init(&barClear, NULL, nReducers);
+  pthread_barrier_init(&barShutdown, NULL, nReducers);
+  pthread_barrier_init(&barAfterRefine, NULL, nReducers);
+  go.writeInit(nReducers, nvertices);
 
-              go.init(folderpath, gb, nmappers, nReducers, nvertices, hiDegree, batchSize, kitems, npartitions);
+  go.init(folderpath, gb, nmappers, nReducers, nvertices, hiDegree, batchSize, kitems, npartitions);
 
-              go.initRefineStructs();
-              double runTime = -getTimer();
-              go.run(); 
-              runTime += getTimer();
+  go.initRefineStructs();
+  double runTime = -getTimer();
+  go.run(); 
+  runTime += getTimer();
 
-              std::cout << "Main::Run time : " << runTime << " (msec)" << std::endl;
-              //std::cout << "Total words: " << countTotalWords << std::endl;
-              return 0;
-              }
+  std::cout << "Main::Run time : " << runTime << " (msec)" << std::endl;
+  //std::cout << "Total words: " << countTotalWords << std::endl;
+  return 0;
+  }
+
 
