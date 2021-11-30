@@ -220,17 +220,17 @@ void* doInMemoryReduce(void* arg) {
   while(!mr->getDone(tid)){
    efprintf(stderr,"\nTID: %d, InMem-MR Outer While Don: %d **********", tid, don);
     don = true;
-#ifdef USE_GOMR
+/*#ifdef USE_GOMR
     InMemoryContainer<KeyType, ValueType> rcache;
     writer.initiateInMemoryRefine(tid);
     pthread_barrier_wait(&(mr->barReduce));
     if(tid == 0)  //Need this condition when used in multi thread envt.
        writer.releaseMapStructures();
 #else
-    InMemoryReductionState<KeyType, ValueType> state = writer.initiateInMemoryReduce(tid); 
+*/    InMemoryReductionState<KeyType, ValueType> state = writer.initiateInMemoryReduce(tid); 
 
     InMemoryContainer<KeyType, ValueType> record;
-#endif
+/*#endif
 
 #ifdef USE_GOMR
 //   bool execLoop = 1;
@@ -271,10 +271,24 @@ void* doInMemoryReduce(void* arg) {
    }
 
 #else
+  */unsigned counter = 0;
     while(writer.getNextMinKey(&state, &record)) {
+#ifdef USE_GOMR
+       if (counter >= mr->kBItems){
+            mr->reduce(tid, writer.readBufMap[tid]);
+            writer.readBufMap[tid].clear();
+            counter = 0;
+          }
+       writer.readBufMap[tid][record.begin()->first] = record.begin()->second;
+       counter++;
+#else
       mr->reduce(tid, record.begin()->first, record.begin()->second);
+#endif
       record.clear();
     }
+#ifdef USE_GOMR
+    if(writer.readBufMap[tid].size() != 0)
+      mr->reduce(tid, writer.readBufMap[tid]);
 #endif
 
   efprintf(stderr, "\nthread %u MR going to Update\n", tid);
