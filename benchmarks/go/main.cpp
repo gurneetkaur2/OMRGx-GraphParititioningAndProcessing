@@ -3,7 +3,7 @@
 #else
 #include "data.pb.h"
 #endif
-
+#define INTERVAL 20
 #define USE_NUMERICAL_HASH
 #define INIT_VAL 5000
 #include "../../engine/mapreduce.hpp"
@@ -195,12 +195,9 @@ void refineInit(const unsigned tid) {
 
 //--------------------------------------------------
   void* reduce(const unsigned tid, const InMemoryContainer<KeyType, ValueType>& container){
-    //countThreadWords += std::accumulate(values.begin(), values.end(), 0);
-    // iterate each vertex neighbor in adjlist
    // pthread_barrier_wait(&(barWriteInfo));
    // fprintf(stderr, "\nTID: %d, Reducing values Container Size: %d", tid, container.size());
     unsigned hipart = tid;
-    // unsigned whereMax;
     for(auto it = fetchPIds[tid].begin(); it != fetchPIds[tid].end(); ++it) { 
     //for(auto wherei=0; wherei < nReducers; wherei++){ //start TID loop
       unsigned whereMax = *it; 
@@ -244,11 +241,6 @@ void refineInit(const unsigned tid) {
           unsigned vtx1 = markMax[hipart].at(it);     //it->first;
           unsigned vtx2 = markMin[hipart].at(it);
   //        fprintf(stderr,"\nTID %d whereMax %d vtx1: %d vtx2: %d  ", tid, whereMax, vtx1, vtx2);
-         /* pthread_mutex_lock(&locks[tid]);
-          gWhere.at(vtx1) = whereMax;
-          gWhere.at(vtx2) = hipart;
-          pthread_mutex_unlock(&locks[tid]);
-         */ // pthread_mutex_unlock(&locks[tid]);
 //          fprintf(stderr, "\nTID: %d, Change Where ", tid);
           //changewhere
           where[hipart].at(vtx1) = whereMax; //gWhere[vtx1];
@@ -259,15 +251,10 @@ void refineInit(const unsigned tid) {
         //  pthread_mutex_unlock(&locks[tid]);
         }
       }
-     // fprintf(stderr, "\nTID: %d, Before BarWriteInfo Reducers: %d ", tid, nReducers);
-    // pthread_barrier_wait(&(barWriteInfo));
-    //  fprintf(stderr, "\nTID: %d BEFORE pIdsCompleted[%d][%d]: %d ", tid, hipart, whereMax, pIdsCompleted[hipart][whereMax]);
  //TODO: This should be set true after the entire iteration is complete-- problem addressed below by clear()
 	 pIdsCompleted[hipart][whereMax] = 1; //true;
     //  fprintf(stderr, "\nTID: %d, AFTER pIdsCompleted: %d ", tid, pIdsCompleted[hipart][whereMax]);
-
     }  // end of tid loop
-
      pthread_barrier_wait(&(barWriteInfo));
      efprintf(stderr, "\nTID: %d, DONE ", tid);
   //  pthread_barrier_wait(&(barClear));
@@ -309,52 +296,6 @@ void refineInit(const unsigned tid) {
    // fprintf(stderr, "AfterReduce\n");
     fprintf(stderr, "\nthread %u waiting for others to finish Refine\n", tid);
  
-  //  if(tid == 0)
-    //  this->gCopy(tid, gWhere);
-
-  //  pthread_barrier_wait(&(barAfterRefine));
-
-/*   stime = 0.0;
-    std::string fileName = outputPrefix + std::to_string(tid);
-    printParts(tid, fileName.c_str());
-    //    ofile.close();
-    this->subtractReduceTimes(tid, stime);
-
-    //pthread_barrier_wait(&(barClear));
-   // refineInit(tid);
-   // clearMemorystructures(tid);
-    //bndIndMap[tid].clear();
-    //dTable[tid].clear();
-     totalPECuts[tid] = 0; //will need to reset this once I figure out how to recalculate edge cuts
-    //   bndSet = false;
-    //cread(tid); //TODO need to find alternate way
-      this->readAfterReduce(tid);
-     pthread_barrier_wait(&(barRefine));
-
-    if(tid == 0){
-      totalCuts = 0;
-      //  time_refine += getTimer();
-      
-      fprintf(stderr,"\n Total EdgeCuts: %d\n", this->countTotalPECut(tid));
-      //fprintf(stderr, "pagerank: thread %u iteration %d took %.3lf ms to process %llu vertices and %llu edges\n", tid, iteration, timevalToDouble(e) - timevalToDouble(s), nvertices, nedges);
-    }
-  *///  pthread_barrier_wait(&(barShutdown));
-/*	 if (s == 0) {
-            printf("Thread %ld passed barrier SHUTDOWN: return value was 0\n",
-                    tid);
-
-        } else if (s == PTHREAD_BARRIER_SERIAL_THREAD) {
-            printf("Thread %ld passed barrier SHUTDOWN: return value was "
-                    "PTHREAD_BARRIER_SERIAL_THREAD\n", tid);
-
-            usleep(100000);
-            printf("\n");
-
-        }
-	 else {        
-            printf("\npthread_barrier_wait (%ld)", tid);
-        }
- */
     if(tid == 0){
     clearRefineStructures();
     }
