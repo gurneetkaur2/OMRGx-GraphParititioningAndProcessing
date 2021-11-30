@@ -170,7 +170,7 @@ class Go : public MapReduce<KeyType, ValueType>
     //copy local partition ids to gWhere
      fprintf(stderr, "\nTID: %d,BEFORE Reducing values \n", tid);
     if(tid ==0){
-      this->gCopy(tid, gWhere);
+//      this->gCopy(tid, gWhere);
     }
 
     // fprintf(stderr, "\nTID: %d,BEFORE RefineINIT \n", tid);
@@ -207,7 +207,7 @@ class Go : public MapReduce<KeyType, ValueType>
      if (counter >= INTERVAL){
         ComputeBECut(tid, gWhere, bndIndMap[tid], inMap);          
     */ unsigned hipart = tid;
-       ComputeBECut(tid, gWhere, bndIndMap[tid], container);          
+//       ComputeBECut(tid, where[tid], bndIndMap[tid], container);          
     // unsigned whereMax;
       for(auto it = fetchPIds[tid].begin(); it != fetchPIds[tid].end(); ++it) { 
       //for(auto wherei=0; wherei < nReducers; wherei++){ //start TID loop
@@ -230,10 +230,10 @@ class Go : public MapReduce<KeyType, ValueType>
         bool ret = this->checkPIDStarted(tid, hipart, whereMax);
         efprintf(stderr, "\nFINAL TID: %d, WHEREMAX: %d, Ret: %d !!!", tid, whereMax, ret);
       //      fprintf(stderr, "\nTID: %d, refining with: %d, ret: %d ", tid, whereMax, ret);
-      //ComputeBECut(tid, gWhere, bndIndMap[tid], container);
+      ComputeBECut(tid, gWhere, bndIndMap[tid], container);
       // wait for other threads to compute edgecuts before calculating dvalues values
       // fprintf(stderr, "\nTID: %d, Before BarEDGECUTS ", tid);
-      //pthread_barrier_wait(&(barEdgeCuts)); 
+      pthread_barrier_wait(&(barEdgeCuts)); 
 
       efprintf(stderr, "\nTID: %d, Computing Gain  Container: %d", tid, container.size());
         if(ret == true){
@@ -252,18 +252,18 @@ class Go : public MapReduce<KeyType, ValueType>
           unsigned vtx1 = markMax[hipart].at(it);     //it->first;
           unsigned vtx2 = markMin[hipart].at(it);
           //        fprintf(stderr,"\nTID %d whereMax %d vtx1: %d vtx2: %d  ", tid, whereMax, vtx1, vtx2);
-          pthread_mutex_lock(&locks[tid]);
+          /*pthread_mutex_lock(&locks[tid]);
           gWhere.at(vtx1) = whereMax;
           gWhere.at(vtx2) = hipart;
           pthread_mutex_unlock(&locks[tid]);
-          // pthread_mutex_unlock(&locks[tid]);
+          */// pthread_mutex_unlock(&locks[tid]);
           //          fprintf(stderr, "\nTID: %d, Change Where ", tid);
           //changewhere
-          where[hipart].at(vtx1) = gWhere[vtx1];
-          where[hipart].at(vtx2) = gWhere[vtx2];  
+          where[hipart].at(vtx1) = vtx1; //gWhere[vtx1];
+          where[hipart].at(vtx2) = vtx2; //gWhere[vtx2];  
           pthread_mutex_lock(&locks[tid]);
-          where[whereMax].at(vtx1) = gWhere[vtx1];
-          where[whereMax].at(vtx2) = gWhere[vtx2];
+          where[whereMax].at(vtx1) = vtx1; //gWhere[vtx1];
+          where[whereMax].at(vtx2) = vtx2; //gWhere[vtx2];
           pthread_mutex_unlock(&locks[tid]);
         }
       }
@@ -384,7 +384,7 @@ class Go : public MapReduce<KeyType, ValueType>
         InMemoryContainer<KeyType, ValueType>& container = this->cRead(tid);
         // fprintf(stderr, "\nTID: %d, Reading Container iSize: %d" , tid, container.size());
 
-        ComputeBECut(tid, gWhere, bndIndMap[tid], container);
+        ComputeBECut(tid, where[tid], bndIndMap[tid], container);
       } 
     }
 
