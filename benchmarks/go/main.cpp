@@ -185,10 +185,6 @@ class Go : public MapReduce<KeyType, ValueType>
       pIdsCompleted[tid].push_back(false);
     }
     //fprintf(stderr,"\ntTID %d, RefineINit fetchPID size: %d ----", tid, fetchPIds[tid].size());
-    //   bndIndMap[tid].clear();
-    //  dTable[tid].clear();
-    //   readNext[tid] = 0;
-    // clearMemorystructures(tid);
     totalPECuts[tid] = 0;
     //bndSet = false;
     totalCuts = 0; 
@@ -209,8 +205,7 @@ class Go : public MapReduce<KeyType, ValueType>
     */ unsigned hipart = tid;
 //       ComputeBECut(tid, where[tid], bndIndMap[tid], container);          
     // unsigned whereMax;
-      for(auto it = fetchPIds[tid].begin(); it != fetchPIds[tid].end(); ++it) { 
-      //for(auto wherei=0; wherei < nReducers; wherei++){ //start TID loop
+    /*  for(auto it = fetchPIds[tid].begin(); it != fetchPIds[tid].end(); ++it) { 
          unsigned whereMax = *it; 
       // fprintf(stderr, "\nTID: %d, WHEREMAX: %d ", tid, whereMax);
          if(whereMax == tid){
@@ -229,23 +224,24 @@ class Go : public MapReduce<KeyType, ValueType>
          }
         bool ret = this->checkPIDStarted(tid, hipart, whereMax);
         efprintf(stderr, "\nFINAL TID: %d, WHEREMAX: %d, Ret: %d !!!", tid, whereMax, ret);
-      //      fprintf(stderr, "\nTID: %d, refining with: %d, ret: %d ", tid, whereMax, ret);
+      *///      fprintf(stderr, "\nTID: %d, refining with: %d, ret: %d ", tid, whereMax, ret);
       ComputeBECut(tid, gWhere, bndIndMap[tid], container);
       // wait for other threads to compute edgecuts before calculating dvalues values
       // fprintf(stderr, "\nTID: %d, Before BarEDGECUTS ", tid);
       pthread_barrier_wait(&(barEdgeCuts)); 
+      for(auto whereMax=tid; whereMax < this->getCols(); whereMax++){ //start TID loop
 
       efprintf(stderr, "\nTID: %d, Computing Gain  Container: %d", tid, container.size());
-        if(ret == true){
+        //if(ret == true){
           int maxG = -1;     
           do{
             maxG = computeGain(tid, hipart, whereMax, markMax[hipart], markMin[hipart], container);
           //  fprintf(stderr, "\nTID: %d, MaxG > 0: %d", tid, maxG);
           } while(maxG > 0);  //end do
-        } // end if ret
+       // } // end if ret
 
       //  pthread_barrier_wait(&(barWriteInfo)); 
-        if(ret == true) {
+       // if(ret == true) {
         //writePartInfo
         efprintf(stderr,"\nTID %d going to write part markMax size: %d ", tid, markMax[hipart].size());
         for(unsigned it=0; it<markMax[hipart].size(); it++){
@@ -266,14 +262,11 @@ class Go : public MapReduce<KeyType, ValueType>
           where[whereMax].at(vtx2) = vtx2; //gWhere[vtx2];
           pthread_mutex_unlock(&locks[tid]);
         }
-      }
-      // fprintf(stderr, "\nTID: %d, Before BarWriteInfo Reducers: %d ", tid, nReducers);
-      // pthread_barrier_wait(&(barWriteInfo));
-      //  fprintf(stderr, "\nTID: %d BEFORE pIdsCompleted[%d][%d]: %d ", tid, hipart, whereMax, pIdsCompleted[hipart][whereMax]);
+     // }
       //TODO: This should be set true after the entire iteration is complete-- problem addressed below by clear()
-      pIdsCompleted[hipart][whereMax] = 1; //true;
+  //    pIdsCompleted[hipart][whereMax] = 1; //true;
       //  fprintf(stderr, "\nTID: %d, AFTER pIdsCompleted: %d ", tid, pIdsCompleted[hipart][whereMax]);
-      }  // end of tid loop
+  }  // end of tid loop
     /*  counter = 0;
       }//end if counter loop
       else{
@@ -286,7 +279,7 @@ class Go : public MapReduce<KeyType, ValueType>
     efprintf(stderr, "\nTID: %d, DONE ", tid);
     //  pthread_barrier_wait(&(barClear));
     // clearing up for next round of fetch from disk. It should be reset for each call to reduce operation so that each batch is refined against other when fetched from disk each time.
-    pIdsCompleted[tid].clear();
+   // pIdsCompleted[tid].clear();
     clearMemorystructures(tid);
     //    pIdStarted.clear(); //causes seg fault here
     return NULL;
@@ -353,22 +346,7 @@ class Go : public MapReduce<KeyType, ValueType>
         //fprintf(stderr, "pagerank: thread %u iteration %d took %.3lf ms to process %llu vertices and %llu edges\n", tid, iteration, timevalToDouble(e) - timevalToDouble(s), nvertices, nedges);
       }
       pthread_barrier_wait(&(barShutdown));
-      *//*   if (s == 0) {
-           printf("Thread %ld passed barrier SHUTDOWN: return value was 0\n",
-           tid);
-
-           } else if (s == PTHREAD_BARRIER_SERIAL_THREAD) {
-           printf("Thread %ld passed barrier SHUTDOWN: return value was "
-           "PTHREAD_BARRIER_SERIAL_THREAD\n", tid);
-
-           usleep(100000);
-           printf("\n");
-
-           }
-           else {        
-           printf("\npthread_barrier_wait (%ld)", tid);
-           }
-       */
+      */
       if(tid == 0){
         clearRefineStructures();
       }
