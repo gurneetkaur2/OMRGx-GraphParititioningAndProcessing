@@ -46,6 +46,7 @@ void MapWriter<KeyType, ValueType>::initBuf(unsigned nMappers, unsigned nReducer
 
   outBufMap = new InMemoryContainer<KeyType, ValueType>[nRows * nCols];
   readBufMap = new InMemoryContainer<KeyType, ValueType>[nCols];
+  refineMap = new InMemoryContainer<KeyType, ValueType>[nCols];
   lookUpTable = new LookUpTable<KeyType>[nCols];
   fetchBatchIds = new std::set<unsigned>[nCols];
   readNextInBatch = new std::vector<unsigned long long>[nCols];
@@ -89,14 +90,14 @@ void MapWriter<KeyType, ValueType>::releaseMapStructures()
   for (unsigned i = 0; i < nCols; i++)
     pthread_mutex_destroy(&locks[i]);
 
- /* for (unsigned i = 0; i < nRows * nCols; i++) {
+  for (unsigned i = 0; i < nRows * nCols; i++) {
     outBufMap[i].clear();
-  }*/
+  }
 
   //delete[] cTotalKeys;
   delete[] nItems;
   //delete[] nValues;
- // delete[] outBufMap;
+  delete[] outBufMap;
 }
 //-------------------------------------------------
   template <typename KeyType, typename ValueType>
@@ -124,6 +125,7 @@ void MapWriter<KeyType, ValueType>::shutdown()
   //delete[] nReadKeys;
   delete[] totalCombined;
  // delete[] readBufMap;
+  delete[] refineMap;
   delete[] lookUpTable;
   delete[] fetchBatchIds;
   delete[] readNextInBatch;
@@ -609,6 +611,46 @@ template <typename KeyType, typename ValueType>
 bool MapWriter<KeyType, ValueType>::read(const unsigned tid) {
   //return read(tid, readBufMap[tid], keysPerBatch[tid], lookUpTable[tid], fetchBatchIds[tid], readNextInBatch[tid], batchesCompleted[tid]);
   return read(tid, keysPerBatch[tid], lookUpTable[tid], fetchBatchIds[tid], readNextInBatch[tid], batchesCompleted[tid]);
+}
+
+//--------------------------------------------------
+template <typename KeyType, typename ValueType>
+void MapWriter<KeyType, ValueType>::initiateInMemoryRefine(unsigned tid) {
+
+  for(unsigned i=0; i<nRows; ++i) {
+     refineMap[tid].insert(outBufMap[tid + nCols * i].begin(), outBufMap[tid + nCols * i].end());
+  }
+  totalKeysInFile[tid] += refineMap[tid].size();
+  readNext[tid] = 0;
+}
+
+//--------------------------------------------------
+template <typename KeyType, typename ValueType>
+bool MapWriter<KeyType, ValueType>::readInMem(unsigned tid) {
+  for (auto it = std::next(refineMap[tid].begin(), readNext[tid]); it != refineMap[tid].end(); ++it) {
+     if(readNext[tid] + readBufMap[tid].size() >= totalKeysInFile[tid]){
+        readNext[tid] += readBufMap[tid].size() ; //start position to read
+        return false;
+     }
+
+     if(readBufMap[tid].size() >= (kBItems)){
+        readNext[tid] += readBufMap[tid].size() ; //start position to read
+        break;
+     }
+     unsigned key = it->first;
+     std::vector<unsigned> vit = it->second;
+     for (std::vector<unsigned>::const_iterator vit = it->second.begin(); vit != it->second.end(); ++vit){
+          readBufMap[tid][key].push_back(*vit);
+     }
+  }
+  if(readNext[tid] + readBufMap[tid].size() >= totalKeysInFile[tid]){
+    readNext[tid] += readBufMap[tid].size() ; //start position to read
+    return false;
+  }
+  if(readNext[tid] < totalKeysInFile[tid]){
+     return true;
+  }
+  return false;
 }
 
 template <typename KeyType, typename ValueType>

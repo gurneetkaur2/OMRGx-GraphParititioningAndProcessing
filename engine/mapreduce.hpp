@@ -218,39 +218,40 @@ void* doInMemoryReduce(void* arg) {
  // fprintf(stderr,"\nTID: %d InMem-MR BEFORE Outer While **********", tid);
 
   while(!mr->getDone(tid)){
-   //fprintf(stderr,"\nTID: %d, InMem-MR Outer While Don: %d **********", tid, don);
+   efprintf(stderr,"\nTID: %d, InMem-MR Outer While Don: %d **********", tid, don);
     don = true;
+#ifdef USE_GOMR
+    writer.initiateInMemoryRefine(tid);
+    pthread_barrier_wait(&(mr->barReduce));
+    if(tid == 0)  //Need this condition when used in multi thread envt.
+       writer.releaseMapStructures();
+#else
     InMemoryReductionState<KeyType, ValueType> state = writer.initiateInMemoryReduce(tid); 
 
     InMemoryContainer<KeyType, ValueType> record;
-/*#ifdef USE_GOMR
-    InMemoryContainer<KeyType, ValueType> refineMap;
-#endif
-*/
-    unsigned counter = 0;
-    while(writer.getNextMinKey(&state, &record)) {
-#ifdef USE_GOMR
-      //refineMap[record.begin()->first] = record.begin()->second;
-        if (counter >= mr->kBItems){
-            mr->reduce(tid, writer.readBufMap[tid]);
-            writer.readBufMap[tid].clear();
-            counter = 0;
-        }
-      writer.readBufMap[tid][record.begin()->first] = record.begin()->second;
-      counter++;
-#else
-      mr->reduce(tid, record.begin()->first, record.begin()->second);
-#endif
-      record.clear();
-    }
-#ifdef USE_GOMR
-  //    fprintf(stderr,"\nMR TID: %d Inner While Don: %d, readmap: %d **********", tid, don, writer.readBufMap[tid].size());
-   // mr->reduce(tid, refineMap);
-    if(writer.readBufMap[tid].size() != 0)
-      mr->reduce(tid, writer.readBufMap[tid]);
 #endif
 
- // fprintf(stderr, "\nthread %u MR going to Update\n", tid);
+#ifdef USE_GOMR
+//   bool execLoop = 1;
+   while(true){
+      bool execLoop = writer.readInMem(tid);
+      if(execLoop == false) {
+        mr->reduce(tid, writer.readBufMap[tid]);
+        writer.readBufMap[tid].erase(writer.readBufMap[tid].begin(), writer.readBufMap[tid].end());
+        break;
+      }
+      mr->reduce(tid, writer.readBufMap[tid]);
+      writer.readBufMap[tid].erase(writer.readBufMap[tid].begin(), writer.readBufMap[tid].end());
+   }
+
+#else
+    while(writer.getNextMinKey(&state, &record)) {
+      mr->reduce(tid, record.begin()->first, record.begin()->second);
+      record.clear();
+    }
+#endif
+
+  efprintf(stderr, "\nthread %u MR going to Update\n", tid);
     mr->updateReduceIter(tid);
   } //end outer while loop
 
@@ -304,7 +305,11 @@ end_read.resize(nMappers, 0);
   if(!writer.getWrittenToDisk()) {
     fprintf(stderr, "Running InMemoryReducers\n");
     parallelExecute(doInMemoryReduce<KeyType, ValueType>, this, nReducers);
+#ifdef USE_GOMR 
+    // nothing already released map structures previously in this case
+#else
     writer.releaseMapStructures();
+#endif
   } else {
     writer.releaseMapStructures();
     fprintf(stderr, "Running Reducers\n");

@@ -71,6 +71,9 @@ class MapWriter
     void performWrite(const unsigned tid, const unsigned buffer, const KeyType& key, const ValueType& value); //GK
     void writeToInfinimem(const unsigned buffer, const IdType startKey, unsigned nItems, const InMemoryContainer<KeyType, ValueType>& inMemMap); //GK
     bool read(const unsigned tid);
+    bool readInMem(const unsigned tid);
+    void initiateInMemoryRefine(unsigned tid);
+
     InMemoryContainer<KeyType, ValueType>& cRead(const unsigned tid);
     //InMemoryContainer<KeyType, std::vector<ValueType>>& 
     std::map<KeyType, std::vector<ValueType> > diskReadContainer(const unsigned tid, const IdType startKey, unsigned noItems);
@@ -96,6 +99,7 @@ class MapWriter
     bool getNextMinKey(InMemoryReductionState<KeyType, ValueType>* state, InMemoryContainer<KeyType, ValueType>* record);
 
     InMemoryContainer<KeyType, ValueType>* readBufMap;
+    InMemoryContainer<KeyType, ValueType>* refineMap;
     LookUpTable<KeyType>* lookUpTable;
     std::set<unsigned>* fetchBatchIds;
 
