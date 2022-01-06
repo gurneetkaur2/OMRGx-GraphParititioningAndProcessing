@@ -197,6 +197,7 @@ class MtMetis : public MapReduce<KeyType, ValueType>
    //   ii[part].edgeCount = ii[part].ubEdgeCount - ii[part].lbEdgeCount;
       fprintf(stderr, "\nInitializing subgraph for part %u took: %.3lf edgeCounter: %u\n", part, tmDiff(s, e), edgeCounter);
       //coarsest graph
+      /*
       std::map<KeyType, std::vector<ValueType>> last_cgraph; 
       gettimeofday(&s, NULL);
       last_cgraph = coarsen(tid, container); //, readEdges[tid]);
@@ -209,19 +210,22 @@ class MtMetis : public MapReduce<KeyType, ValueType>
       std::map<KeyType, std::vector<ValueType>> cgraph(last_cgraph);
       unsigned level = ii[tid].levels;
       gettimeofday(&s, NULL);
+*/
+      int level = 0;
       do{
-        efprintf(stderr, "\n*****Tid: %d Refining LEVEL: %u *****\n", tid, level);
+        fprintf(stderr, "\n*****Tid: %d Refining LEVEL: %u *****\n", tid, level);
         //TODO: to refine all coarser level graphs -- clgraph
         //std::map<KeyType, std::vector<ValueType>> cgraph(clgraph[tid][level]);
         // refining the coarsest level graph which is in memory and fetching the finer levels later
-        refinepartition(tid, cgraph);
-        //fprintf(stderr,"\nTID: %d Waiting after refine ", tid);
+        refinepartition(tid, container);
+        fprintf(stderr,"\nTID: %d Waiting after refine ", tid);
         pthread_barrier_wait(&(barWait));
         
         //project partition to finer level  
         IdType k;
-        efprintf(stderr,"\nTID: %d Projecting partition ", tid);
-        for(auto fit = cgraph.begin(); fit != cgraph.end(); fit++){
+        fprintf(stderr,"\nTID: %d Projecting partition ", tid);
+        //for(auto fit = cgraph.begin(); fit != cgraph.end(); fit++){
+        for(auto fit = container.begin(); fit != container.end(); fit++){
           k = cmap[tid][fit->first];
           //fprintf(stderr,"\ntid: %d fit->first: %u, k: %u, gWhere: %d ", tid, fit->first, k, gWhere[fit->first]); 
           pthread_mutex_lock(&locks[tid]);
@@ -229,7 +233,7 @@ class MtMetis : public MapReduce<KeyType, ValueType>
           pthread_mutex_unlock(&locks[tid]);
         }
         level--;
-        efprintf(stderr,"\nTID: %d DONE Projecting partition level: %d ", tid, level);
+        fprintf(stderr,"\nTID: %d DONE Projecting partition level: %d ", tid, level);
       } while(level > 0);
 
       gettimeofday(&e, NULL);
