@@ -261,32 +261,6 @@ class MtMetis : public MapReduce<KeyType, ValueType>
 
         //do{
           cgraph = MATCH_RM(tid, cgraph, nedges, level);
-          //  number of vertices in coarsened graph
-/*          gcd[tid][level].indexCount = gcd[tid][level].endIndex - gcd[tid][level].startIndex;
-          IdType nItems = gcd[tid][level].cnvtxs;
-
-          if(cnvtxs != gcd[tid][level].cnvtxs)
-            cnvtxs = gcd[tid][level].cnvtxs;
-          else  // no improvement in number of coarser vertices
-            break;
-
-          cnedges = gcd[tid][level].cnedges;
-          efprintf(stderr,"\nTID: %d, BEFORE writing cgraph size: %u, startKey: %u level: %d", tid, cgraph.size(), gcd[tid][level].startIndex, level);
-         // TODO:: store in clgraph (level) instead of writing to disk
-         // this->diskWriteContainer(tid, gcd[tid][level].startIndex, nItems, cgraph.begin(), cgraph.end());
-          efprintf(stderr,"\nTID: %d, AFTER writing cgraph size: %u, startKey: %u level: %d", tid, cgraph.size(), gcd[tid][level].startIndex, level);
-*/
-          /*InMemoryContainer<KeyType, ValueType> container = this->diskReadContainer(tid, gcd[tid][level].startIndex, nItems);
-            fprintf(stderr,"\nTID: %d, After Reading cgraph size: %u, startKey: %u ", tid, container.size(), gcd[tid][level].startIndex); */
-  /*        level++;
-          gcd[tid][level].startIndex = nItems;
-          ii[tid].levels = level;
-          efprintf(stderr,"\nTID: %d cnvtxs: %d cnedges: %d CoarsenTo: %d Fraction: %d ", tid, cnvtxs, cnedges, CoarsenTo, COARSEN_FRACTION*cnvtxs);
-        }
-        while (gcd[tid][level-1].cnvtxs > CoarsenTo &&
-            // gcd[tid][level-1].cnvtxs < COARSEN_FRACTION*cnvtxs && //graph->finer->nvtxs &&
-            gcd[tid][level-1].cnedges > (gcd[tid][level-1].cnvtxs)/2);  
-*/
         // return last coarses graph
         return cgraph;
       }
@@ -311,10 +285,12 @@ class MtMetis : public MapReduce<KeyType, ValueType>
 
           if (match[tid][i] == UNMATCHED) {  /* Unmatched */
             maxidx = i; // = 4
-            auto it = container.find(i);
-            if(it != container.end()){
-              for (; last_unmatched<it->second.size(); last_unmatched++) {
-                j = it->second[last_unmatched]; // pick a random adjacent vertex of i
+        //    auto it = container.find(i);
+           // if(it != container.end()){
+           //   for (; last_unmatched<it->second.size(); last_unmatched++) {
+              for (; last_unmatched<container[i].size(); last_unmatched++) {
+                j = container[i][last_unmatched]; // pick a random adjacent vertex of i
+                //j = it->second[last_unmatched]; // pick a random adjacent vertex of i
                 //make sure adj vertex is within this container && check if it is unmatched
                 if (match[tid][j] == UNMATCHED) {   
                   // fprintf(stderr,"\nTID: %d, j: %u matched: %d  ", tid, j, match[j]);
@@ -322,7 +298,7 @@ class MtMetis : public MapReduce<KeyType, ValueType>
                   break;
                 }
               }
-            }
+           // }
 
             if (maxidx != UNMATCHED) {
               cmap[tid][i]  = cmap[tid][maxidx] = cnvtxs++;
@@ -347,6 +323,7 @@ class MtMetis : public MapReduce<KeyType, ValueType>
           }
           efprintf(stderr,"\nTID: %d, FInal container element i: %u cmap: %u match: %u ", tid, fit->first, cmap[tid][fit->first], match[tid][fit->first]);
         }
+
         cgraph = CreateCoarseGraph(tid, container, cnvtxs, cmap[tid], level);
         //fprintf(stderr,"\nTID: %d coarser vertices: %u ", tid, cnvtxs);
         gcd[tid][level].cnvtxs = cgraph.size();
@@ -392,28 +369,6 @@ class MtMetis : public MapReduce<KeyType, ValueType>
             cgraph[it->first].push_back(it->second[vit]);
             //   fprintf(stderr,"\nTID: %d, element: %d k: %u, nedges: %u match: %u htable: %u ", tid,it->second[vit], k, nedges, match[it->second[vit]], htable[k]);
           }
-/*
-          if(v != u && u < ii[tid].ubIndex){
-            //fprintf(stderr,"\nTID: %d before v!=u ", tid);
-            auto uit = container.find(u);
-            if(uit != container.end()){
-              for(unsigned vit=0; vit <uit->second.size(); vit++){  //adjncy of u
-                k = cmap[uit->second[vit]]; // num of cnvtxs (coarsened vertices) of this vertex
-                //if(k == UNMATCHED)
-                if(k == UNMATCHED || k >ii[tid].ubIndex)
-                  continue;
-                if(k == UNMATCHED)
-                  nedges++;    
-                cgraph[it->first].push_back(uit->second[vit]); // edges will aggregate for matching vertices
-                // fprintf(stderr,"\nTID: %d, v!=u element: %d k: %u, nedges: %u match: %u htable: %u ", tid,uit->second[vit], k, nedges, match[uit->second[vit]], htable[k]);
-              }
-            }
-          }
-         // fprintf(stderr,"\nTID: %d cnedges: %u level: %d ", tid, cnedges, level);
-         // fprintf(stderr,"\nTID: %d endIndex: %d, it->first: %d ", tid, gcd[tid][level].endIndex, it->first);
-          if(gcd[tid][level].endIndex < it->first) 
-            gcd[tid][level].endIndex = it->first;
-*/
           cnedges         += nedges;
         }
         gcd[tid][level].cnedges = cnedges;
