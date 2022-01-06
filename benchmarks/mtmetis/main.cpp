@@ -37,13 +37,8 @@ unsigned long long numEdges = 0;
 
 //Meta data for Coarsen Graph processing
 typedef struct __partitionInfo {
-  IdType lbEdgeCount;  //startkeyIndex
-  IdType ubEdgeCount;  //endkeyIndex
   IdType edgeCount; // dont need this
-
-  IdType lbIndex;  //startkey
   IdType ubIndex;  //endKey
-  IdType indexCount; // total vertices
   unsigned levels;
 } PartitionInfo;
 PartitionInfo *ii = NULL;
@@ -77,7 +72,7 @@ __thread IdType *perm = NULL;
 std::map<IdType, IdType>* match;
 std::map<IdType, IdType>* cmap;
 //pagerank for previous and next iteration
-std::map<IdType, std::vector<IdType> >* readEdges;
+std::map<IdType, std::vector<IdType> >* clgraph; /// this can be used to store coarser level graphs
 static pthread_barrier_t barCompute;
 static pthread_barrier_t barEdgeCuts;
 static pthread_barrier_t barWait;
@@ -106,7 +101,7 @@ class MtMetis : public MapReduce<KeyType, ValueType>
   }
 
   void writeInit(unsigned nCols, unsigned nVtces){
-    readEdges = new std::map<IdType, std::vector<IdType> >[nCols];
+    clgraph = new std::map<IdType, std::vector<IdType> >[nCols];
     match = new std::map<IdType, IdType>[nCols];
     cmap = new std::map<IdType, IdType>[nCols];
     where = new std::vector<unsigned long>[nCols];
@@ -132,12 +127,16 @@ class MtMetis : public MapReduce<KeyType, ValueType>
     }
   }
 
+//------------------------------------------------
+
   unsigned setPartitionId(const unsigned tid)
   {
     unsigned nCols = this->getCols();
     //fprintf(stderr,"\nTID: %d writing to partition: %d " , tid, tid % nCols);
     return -1;// tid % nCols;  
   }
+
+//------------------------------------------------
 
   void* map(const unsigned tid, const unsigned fileId, const std::string& input, const unsigned nbufferId, const unsigned hiDegree)
   {
@@ -151,7 +150,7 @@ class MtMetis : public MapReduce<KeyType, ValueType>
     while(inputStream >> token){
       from.push_back(token);
     }
-   // std::sort(from.begin(), from.end()); // using default comparator
+    std::sort(from.begin(), from.end()); // using default comparator
 
     for(unsigned i = 0; i < from.size(); ++i){
       //     fprintf(stderr,"\tTID: %d, src: %zu, dst: %zu, vrank: %f, rank: %f nNbrs: %u", tid, e.src, e.dst, e.vRank, e.rank, e.numNeighbors);
@@ -161,93 +160,66 @@ class MtMetis : public MapReduce<KeyType, ValueType>
     return NULL;
   }
 
+//------------------------------------------------
+
   void* beforeReduce(const unsigned tid) {
-    //  assert(false);
-    //fprintf(stderr,"\nInside writeINIT ************ Cols: %d, Vertices: %d ", nCols, nVtces);
-    // for (unsigned i = 0; i<=this->getContainerSize(); ++i) {
-    //for (unsigned j = 0; j<nvertices; ++j) {
-    //  readEdges[tid].push_back(-1);
-    // }
-    // }
     unsigned size = this->getContainerSize();
-    //match = (IdType *) calloc(size, sizeof(IdType));
-    //match = (int *) calloc(nvertices, sizeof(int));
     perm = (IdType *) calloc(size, sizeof(IdType));
-    //cmap = (IdType *) calloc(size, sizeof(IdType));
-
-    /*for(unsigned i=0; i<nvertices; i++){
-      match[i] = -1;
-    //fprintf(stderr,"\ntid: %d, match[i]: %d, unmatched: %d ", tid, match[i], UNMATCHED);
-    perm[i] = i;
-    cmap[i] = -1; //TODO: it may give trouble if the vertices are not from beginning
     }
-    unsigned seed = (nvertices*tid+1) % nvertices; 
-    //(std::chrono::system_clock::now().time_since_epoch().count()) % nvertices;
-    // Shuffling our array
-    std::shuffle(perm, perm + nvertices, std::default_random_engine(seed));
-     */ }
 
+//------------------------------------------------
     void* reduce(const unsigned tid, const InMemoryContainer<KeyType, ValueType>& container) {
 
       efprintf(stderr, "\nTID:%d Starting Reduce\n", tid);
       unsigned part = tid;
       IdType indexCount = 0;
-
-      ii[part].lbEdgeCount = edgeCounter;
+      edgeCounter = 0;
+//      ii[part].lbEdgeCount = edgeCounter;
       assert(container.size() > 0);
-      auto it_first = container.begin();
-      ii[part].lbIndex = it_first->first;
 
       IdType lbIndex = container.begin()->first;
       efprintf(stderr, "Initialize sub-graph: %u\n", part);
       timeval s, e;
       gettimeofday(&s, NULL);
-      fprintf(stderr,"\nPART: %u, CONTAINER elements LowerBound: %d ", tid, ii[part].lbIndex);
+      fprintf(stderr,"\nPART: %u, CONTAINER elements LowerBound: %d ", tid, lbIndex);
 
       for(auto it = container.begin(); it != container.end(); it++){
-        //   readEdges[part][it->first];
-        //          fprintf(stderr,"\nPART: %u, CONTAINER elements Key: %u, values: ", tid, it->first);
-        for(int k=0; k<it->second.size(); k++) {
-          readEdges[part][it->first].push_back(it->second[k]);
-          //        fprintf(stderr,"\t %ul ", it->second[k]);
-          //fprintf(stderr,"\nPART: %d readEdges elements key: %zu value: %zu ", part, it->second[k].dst, it->second[k].src);
-          edgeCounter++; 
-        }
+        edgeCounter += it->second.size();
         match[tid][it->first] = -1;
         //fprintf(stderr,"\ntid: %d, match[i]: %d, unmatched: %d ", tid, match[i], UNMATCHED);
-        perm[indexCount] = it->first;
+        perm[indexCount++] = it->first;
         cmap[tid][it->first] = -1; //TODO: it may give trouble if the vertices are not from beginning
-        indexCount++;
         ii[part].ubIndex = it->first;
       }
       efprintf(stderr, "\nTID: %d done adding container \n", tid);
       gettimeofday(&e, NULL);
-      assert(readEdges != NULL);
-      ii[part].indexCount = indexCount;
-      ii[part].ubEdgeCount = edgeCounter;
-      ii[part].edgeCount = ii[part].ubEdgeCount - ii[part].lbEdgeCount;
-      efprintf(stderr, "\nInitializing subgraph for part %u took: %.3lf readEdges Size: %u\n", part, tmDiff(s, e), readEdges[tid].size());
+      ii[part].edgeCount = edgeCounter;
+   //   ii[part].edgeCount = ii[part].ubEdgeCount - ii[part].lbEdgeCount;
+      fprintf(stderr, "\nInitializing subgraph for part %u took: %.3lf edgeCounter: %u\n", part, tmDiff(s, e), edgeCounter);
       //coarsest graph
       std::map<KeyType, std::vector<ValueType>> last_cgraph; 
-      last_cgraph = coarsen(tid); //, readEdges[tid]);
+      gettimeofday(&s, NULL);
+      last_cgraph = coarsen(tid, container); //, readEdges[tid]);
+      gettimeofday(&e, NULL);
+      fprintf(stderr, "\nCOARSENING part %u took: %.3lf \n", part, tmDiff(s, e));
 
       initpartition(tid, last_cgraph);
 
+      //last_cgraph = container;
       std::map<KeyType, std::vector<ValueType>> cgraph(last_cgraph);
-      std::map<KeyType, std::vector<ValueType>> fgraph;
       unsigned level = ii[tid].levels;
+      gettimeofday(&s, NULL);
       do{
         efprintf(stderr, "\n*****Tid: %d Refining LEVEL: %u *****\n", tid, level);
-        // refining the coarsest level graph which is in memory and fetching the finer levels from disk later
+        //TODO: to refine all coarser level graphs -- clgraph
+        //std::map<KeyType, std::vector<ValueType>> cgraph(clgraph[tid][level]);
+        // refining the coarsest level graph which is in memory and fetching the finer levels later
         refinepartition(tid, cgraph);
         //fprintf(stderr,"\nTID: %d Waiting after refine ", tid);
         pthread_barrier_wait(&(barWait));
-        //  if(tid ==0){
-        //     this->gCopy(tid, gWhere);
-        //  }
-        //project partition to finer level 
+        
+        //project partition to finer level  
         IdType k;
-        //for(IdType i=0; i<gcd[tid][level].cnvtxs; i++){
         efprintf(stderr,"\nTID: %d Projecting partition ", tid);
         for(auto fit = cgraph.begin(); fit != cgraph.end(); fit++){
           k = cmap[tid][fit->first];
@@ -258,50 +230,44 @@ class MtMetis : public MapReduce<KeyType, ValueType>
         }
         level--;
         efprintf(stderr,"\nTID: %d DONE Projecting partition level: %d ", tid, level);
-        //fetch the finer level graph
-      /*  if(level >0){
-          IdType nItems = gcd[tid][level].cnvtxs;
-          efprintf(stderr,"\nTID: %d, BEFORE Reading cgraph size: %u, startKey: %u, level: %d ", tid, nItems, gcd[tid][level].startIndex, level);
-          fgraph = this->diskReadContainer(tid, gcd[tid][level].startIndex, nItems);
-          // efprintf(stderr,"\nTID: %d, After Reading fgraph size: %u, startKey: %u ", tid, fgraph.size(), gcd[tid][level].startIndex);
-          cgraph = fgraph;
-        }*/
       } while(level > 0);
 
+      gettimeofday(&e, NULL);
+      fprintf(stderr, "\nRefining Partition for part %u took: %.3lf \n", part, tmDiff(s, e));
         //assert(false);
         // store the coarsened graph on disk
 
         fprintf(stderr,"\n\n****tid: %d Finished refining *** ", tid); 
         pthread_barrier_wait(&(barCompute));
-        readEdges[tid].clear();
         clearMemorystructures(tid);
         return NULL;
       }
 
-      std::map<KeyType, std::vector<ValueType>> coarsen(const unsigned tid){ //, std::map<KeyType, std::vector<ValueType>> container){
-        // std::map<KeyType, std::vector<ValueType>> container(readEdges[tid]);
-        std::map<KeyType, std::vector<ValueType>> cgraph(readEdges[tid]);
+
+//------------------------------------------------
+      std::map<KeyType, std::vector<ValueType>> coarsen(const unsigned tid, const InMemoryContainer<KeyType, ValueType>& container){
+        std::map<KeyType, std::vector<ValueType>> cgraph(container);
         efprintf(stderr,"\nTID: %d, Coarsening graph container size: %u ", tid, cgraph.size());
         IdType cnvtxs = 0; IdType cnedges;
-        unsigned nvtxs = ii[tid].indexCount;
         unsigned nedges = ii[tid].edgeCount;
-        IdType edgeCCounter = ii[tid].lbEdgeCount; // start key
         unsigned level = 0;
         unsigned CoarsenTo = 100; //gk_max((nvtxs)/(20*std::log2(nparts)), 30*(nparts));
-        //   for(unsigned j=0; j < level; j++){
         gcd[tid][level].startIndex = 0;
+
         do{
-          cgraph = MATCH_RM(tid, cgraph, nvtxs, nedges, level);
+          cgraph = MATCH_RM(tid, cgraph, nedges, level);
           //  number of vertices in coarsened graph
           gcd[tid][level].indexCount = gcd[tid][level].endIndex - gcd[tid][level].startIndex;
           IdType nItems = gcd[tid][level].cnvtxs;
+
           if(cnvtxs != gcd[tid][level].cnvtxs)
             cnvtxs = gcd[tid][level].cnvtxs;
           else  // no improvement in number of coarser vertices
             break;
+
           cnedges = gcd[tid][level].cnedges;
-          // it = std::next(readEdges[tid].begin(), nItems);
           efprintf(stderr,"\nTID: %d, BEFORE writing cgraph size: %u, startKey: %u level: %d", tid, cgraph.size(), gcd[tid][level].startIndex, level);
+         // TODO:: store in clgraph (level) instead of writing to disk
          // this->diskWriteContainer(tid, gcd[tid][level].startIndex, nItems, cgraph.begin(), cgraph.end());
           efprintf(stderr,"\nTID: %d, AFTER writing cgraph size: %u, startKey: %u level: %d", tid, cgraph.size(), gcd[tid][level].startIndex, level);
 
@@ -320,10 +286,10 @@ class MtMetis : public MapReduce<KeyType, ValueType>
         return cgraph;
       }
 
-      std::map<KeyType, std::vector<ValueType>> MATCH_RM(const unsigned tid, std::map<KeyType, std::vector<ValueType>> container, IdType nvtxs, IdType nedges, unsigned level){
+
+//------------------------------------------------
+      std::map<KeyType, std::vector<ValueType>> MATCH_RM(const unsigned tid, std::map<KeyType, std::vector<ValueType>>& container, IdType nedges, unsigned level){
         IdType i, j, pi, cnvtxs, last_unmatched, maxidx;
-        //IdType *match, *perm, *cmap;
-        // IdType *cmap;
 
         unsigned seed = (container.size()*tid+1) % container.size(); 
         //(std::chrono::system_clock::now().time_since_epoch().count()) % nvertices;
@@ -333,29 +299,21 @@ class MtMetis : public MapReduce<KeyType, ValueType>
         size_t nunmatched=0;
         std::map<KeyType, std::vector<ValueType>> cgraph;
 
-        // for (cnvtxs=0, last_unmatched=0, pi=0; pi<nvtxs; pi++) {
-        cnvtxs=0, last_unmatched=0; pi=0;// pi<nvtxs; pi++) {
+        cnvtxs=0, last_unmatched=0; pi=0;
         for(auto fit = container.begin(); fit != container.end(); fit++){
           i = perm[fit->first] % container.size();  // i = 4
           //fprintf(stderr,"\nTID: %d, Picked random vertex: %u, i: %u , match[i]: %d, Actual element: %u ", tid, perm[fit->first] % container.size(), i, match[i], fit->first);
 
           if (match[tid][i] == UNMATCHED) {  /* Unmatched */
-            //   fprintf(stderr,"\nTID: %d i: %d UNMATCHED ", tid, i);
             maxidx = i; // = 4
             auto it = container.find(i);
             if(it != container.end()){
-              //         srand(time(NULL));
-              // last_unmatched = rand() % it->second.size();
-              //last_unmatched = std::max(pi, last_unmatched)+1;
-              //last_unmatched = 0;
               for (; last_unmatched<it->second.size(); last_unmatched++) {
                 j = it->second[last_unmatched]; // pick a random adjacent vertex of i
                 //make sure adj vertex is within this container && check if it is unmatched
                 if (match[tid][j] == UNMATCHED) {   
                   // fprintf(stderr,"\nTID: %d, j: %u matched: %d  ", tid, j, match[j]);
                   maxidx = j; //
-                  // pi++;
-                  //last_unmatched = pi; 
                   break;
                 }
               }
@@ -390,17 +348,13 @@ class MtMetis : public MapReduce<KeyType, ValueType>
         return cgraph;
       }
 
-      std::map<KeyType, std::vector<ValueType>> CreateCoarseGraph(const unsigned tid, std::map<KeyType, std::vector<ValueType>> container, IdType cnvtxs, std::map<IdType, IdType>& cmap, unsigned level){
-        //fprintf(stderr,"\nTID: %d inside createCoarse graph size: %u ", tid, container.size());
-   //     IdType *htable;
-        std::map<KeyType, std::vector<ValueType>> cgraph;
-        IdType k, j, v, u, m, nedges, cnedges;
 
-/*        htable = (IdType *) calloc(container.size(), sizeof(IdType));
-        for(IdType i=0; i<container.size(); i++){
-          htable[i] = -1;
-        }
-*/
+//------------------------------------------------
+      std::map<KeyType, std::vector<ValueType>> CreateCoarseGraph(const unsigned tid, std::map<KeyType, std::vector<ValueType>> &container, IdType cnvtxs, std::map<IdType, IdType>& cmap, unsigned level){
+        //fprintf(stderr,"\nTID: %d inside createCoarse graph size: %u ", tid, container.size());
+        std::map<KeyType, std::vector<ValueType>> cgraph;
+        IdType k, v, u, nedges, cnedges;
+
         cnedges = 0;
         //   fprintf(stderr,"\nTID: %d CreateCoarse graph Container size: %u ", tid, container.size());
         for(auto it = container.begin(); it !=container.end(); it++){
@@ -432,28 +386,13 @@ class MtMetis : public MapReduce<KeyType, ValueType>
                 //if(k == UNMATCHED)
                 if(k == UNMATCHED || k >ii[tid].ubIndex)
                   continue;
-              //  if(m = htable[k] == -1)
-              //    htable[k] = nedges++;    
                 if(k == UNMATCHED)
                   nedges++;    
                 cgraph[it->first].push_back(uit->second[vit]); // edges will aggregate for matching vertices
                 // fprintf(stderr,"\nTID: %d, v!=u element: %d k: %u, nedges: %u match: %u htable: %u ", tid,uit->second[vit], k, nedges, match[uit->second[vit]], htable[k]);
               }
             }
-           // fprintf(stderr,"\nTID: %d before htable!=-1 cnvtxs: %u ", tid, cnvtxs);
-       /*     if ((htable[cnvtxs]) != -1) {
-              htable[cnvtxs] = -1;
-            }
-         */
           }
-          /* Zero out the htable */
-         // fprintf(stderr,"\nTID: %d before zero out cnvtxs: %u, nedges: %u ", tid, cnvtxs, nedges);
-          /*for (j=0; j<nedges; j++){
-            fprintf(stderr,"\nTID: %d Inside zero out nedges: %u htable: %d ", tid, cnvtxs, htable[j]);
-            if(htable != -1)
-            htable[j] = -1;
-            }*/
-
          // fprintf(stderr,"\nTID: %d cnedges: %u level: %d ", tid, cnedges, level);
          // fprintf(stderr,"\nTID: %d endIndex: %d, it->first: %d ", tid, gcd[tid][level].endIndex, it->first);
           if(gcd[tid][level].endIndex < it->first) 
@@ -465,8 +404,10 @@ class MtMetis : public MapReduce<KeyType, ValueType>
         return cgraph;
       }
 
-      void initpartition(const unsigned tid, std::map<KeyType, std::vector<ValueType>> cgraph){
-        srand(time(NULL));
+//------------------------------------------------
+
+      void initpartition(const unsigned tid, std::map<KeyType, std::vector<ValueType>> &cgraph){
+   //     srand(time(NULL));
 
         efprintf(stderr,"\nTID: %d init partition cgraph: %u ", tid, cgraph.size());
         for (auto it= cgraph.begin(); it != cgraph.end(); it++){
@@ -490,15 +431,21 @@ class MtMetis : public MapReduce<KeyType, ValueType>
             }*/           
       }
 
-      void refinepartition(const unsigned tid, const std::map<KeyType, std::vector<ValueType>> partition){
+//------------------------------------------------
+
+      void refinepartition(const unsigned tid, const std::map<KeyType, std::vector<ValueType>> &partition){
         efprintf(stderr,"\nTID: %d Refine partition Partition: %u ", tid, partition.size());
         unsigned counter = 0;
         //unsigned hipart = tid;
-        ComputeBECut(tid, gWhere, bndIndMap[tid], partition);
+        InMemoryContainer<KeyType, ValueType> inMap;    
+        for(auto it = partition.begin(); it != partition.end(); it++){
+          if (counter >= INTERVAL){
+          ComputeBECut(tid, gWhere, bndIndMap[tid], partition);
        // pthread_barrier_wait(&(barEdgeCuts));
-        for(unsigned i=0; i < nparts; i++){
-            unsigned hipart = i;
-            for(unsigned j=i+1; j < nparts; j++){
+        //for(unsigned i=0; i < nparts; i++){
+            unsigned nparts = this->getCols();
+            unsigned hipart = tid; //i;
+            for(unsigned j=tid+1; j < nparts; j++){
                 unsigned whereMax = j;
         //for(auto whereMax=tid+1; whereMax < this->getCols(); whereMax++){ //start TID loop
              // if(whereMax == tid) continue;
@@ -516,7 +463,13 @@ class MtMetis : public MapReduce<KeyType, ValueType>
                   where[whereMax].at(vtx2) = hipart; //gWhere[vtx2];
                 }
             }
-         }
+            counter = 0;
+          } //end if counter loop
+          else{
+            inMap[it->first] = it->second;
+            counter++;
+          }
+        }
            //pthread_barrier_wait(&(barWriteInfo));
         /*InMemoryContainer<KeyType, ValueType> inMap;    
         for(auto it = partition.begin(); it != partition.end(); it++){
@@ -556,6 +509,8 @@ class MtMetis : public MapReduce<KeyType, ValueType>
        // } //end for container loop
         efprintf(stderr,"\nTID: %d FINISHED Refine partition ", tid);
       }
+
+//------------------------------------------------
 
       void ComputeBECut(const unsigned tid, const std::vector<unsigned long>& where, InMemTable& bndind, const InMemoryContainer<KeyType, ValueType>& partition) {
         IdType src;
@@ -667,13 +622,12 @@ class MtMetis : public MapReduce<KeyType, ValueType>
 
       //========================
       void clearMemorystructures(const unsigned tid){
-        //  for(unsigned i=0; i<nparts; i++){
         bndIndMap[tid].clear();
         markMax[tid].clear();
         markMin[tid].clear();
         dTable[tid].clear();
+        clgraph[tid].clear();
         totalPECuts[tid] = 0;
-        // }
       }
 
 
@@ -681,6 +635,7 @@ class MtMetis : public MapReduce<KeyType, ValueType>
       void clearRefineStructures(){
         markMax->clear();
         markMin->clear();
+        //clgraph->clear();
         delete[] totalPECuts;
         delete[] bndIndMap;
         delete[] dTable;                  
@@ -689,6 +644,7 @@ class MtMetis : public MapReduce<KeyType, ValueType>
         delete[] where;
         delete[] match;
         delete[] cmap;
+        delete[] clgraph;
         pthread_barrier_destroy(&barWait);
         pthread_barrier_destroy(&barCompute);
       }
@@ -749,7 +705,6 @@ class MtMetis : public MapReduce<KeyType, ValueType>
 
       void* afterReduce(const unsigned tid) {
         fprintf(stderr,"\nTID: %d After Reduce ", tid);
-        //readEdges[tid].clear();
         if(tid == 0){
           clearRefineStructures();
         }
@@ -855,8 +810,6 @@ class MtMetis : public MapReduce<KeyType, ValueType>
         free(ii); free(gcd); 
         //free(match); 
         free(perm); //free(cmap);
-        //readEdges->clear();
-        delete[] readEdges;
         MallocExtension::instance()->ReleaseFreeMemory();
 
         return 0;
