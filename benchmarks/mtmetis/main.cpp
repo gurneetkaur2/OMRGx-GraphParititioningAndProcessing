@@ -181,7 +181,7 @@ class MtMetis : public MapReduce<KeyType, ValueType>
       efprintf(stderr, "Initialize sub-graph: %u\n", part);
       timeval s, e;
       gettimeofday(&s, NULL);
-      fprintf(stderr,"\nPART: %u, CONTAINER elements LowerBound: %d ", tid, lbIndex);
+      efprintf(stderr,"\nPART: %u, CONTAINER elements LowerBound: %d ", tid, lbIndex);
 
       for(auto it = container.begin(); it != container.end(); it++){
         edgeCounter += it->second.size();
@@ -195,14 +195,14 @@ class MtMetis : public MapReduce<KeyType, ValueType>
       gettimeofday(&e, NULL);
       ii[part].edgeCount = edgeCounter;
    //   ii[part].edgeCount = ii[part].ubEdgeCount - ii[part].lbEdgeCount;
-      fprintf(stderr, "\nInitializing subgraph for part %u took: %.3lf edgeCounter: %u\n", part, tmDiff(s, e), edgeCounter);
+      efprintf(stderr, "\nInitializing subgraph for part %u took: %.3lf edgeCounter: %u\n", part, tmDiff(s, e), edgeCounter);
       //coarsest graph
       
       std::map<KeyType, std::vector<ValueType>> last_cgraph; 
       gettimeofday(&s, NULL);
       last_cgraph = coarsen(tid, container); //, readEdges[tid]);
       gettimeofday(&e, NULL);
-      fprintf(stderr, "\nCOARSENING part %u took: %.3lf \n", part, tmDiff(s, e));
+      efprintf(stderr, "\nCOARSENING part %u took: %.3lf \n", part, tmDiff(s, e));
 
 //      initpartition(tid, last_cgraph);
 
@@ -213,7 +213,7 @@ class MtMetis : public MapReduce<KeyType, ValueType>
 
       int level = 0;
       do{
-        fprintf(stderr, "\n*****Tid: %d Refining LEVEL: %u *****\n", tid, level);
+        efprintf(stderr, "\n*****Tid: %d Refining LEVEL: %u *****\n", tid, level);
         //TODO: to refine all coarser level graphs -- clgraph
         //std::map<KeyType, std::vector<ValueType>> cgraph(clgraph[tid][level]);
         // refining the coarsest level graph which is in memory and fetching the finer levels later
@@ -224,7 +224,7 @@ class MtMetis : public MapReduce<KeyType, ValueType>
         
         //project partition to finer level  
         IdType k;
-        fprintf(stderr,"\nTID: %d Projecting partition ", tid);
+        efprintf(stderr,"\nTID: %d Projecting partition ", tid);
         for(auto fit = cgraph.begin(); fit != cgraph.end(); fit++){
         //for(auto fit = container.begin(); fit != container.end(); fit++){
           k = cmap[tid][fit->first];
@@ -234,15 +234,15 @@ class MtMetis : public MapReduce<KeyType, ValueType>
           pthread_mutex_unlock(&locks[tid]);
         }
         level--;
-        fprintf(stderr,"\nTID: %d DONE Projecting partition level: %d ", tid, level);
+        efprintf(stderr,"\nTID: %d DONE Projecting partition level: %d ", tid, level);
       } while(level > 0);
 
       gettimeofday(&e, NULL);
-      fprintf(stderr, "\nRefining Partition for part %u took: %.3lf \n", part, tmDiff(s, e));
+      efprintf(stderr, "\nRefining Partition for part %u took: %.3lf \n", part, tmDiff(s, e));
         //assert(false);
         // store the coarsened graph on disk
 
-        fprintf(stderr,"\n\n****tid: %d Finished refining *** ", tid); 
+        efprintf(stderr,"\n\n****tid: %d Finished refining *** ", tid); 
         pthread_barrier_wait(&(barCompute));
         clearMemorystructures(tid);
         return NULL;
