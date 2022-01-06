@@ -197,35 +197,36 @@ class MtMetis : public MapReduce<KeyType, ValueType>
    //   ii[part].edgeCount = ii[part].ubEdgeCount - ii[part].lbEdgeCount;
       fprintf(stderr, "\nInitializing subgraph for part %u took: %.3lf edgeCounter: %u\n", part, tmDiff(s, e), edgeCounter);
       //coarsest graph
-      /*
+      
       std::map<KeyType, std::vector<ValueType>> last_cgraph; 
       gettimeofday(&s, NULL);
       last_cgraph = coarsen(tid, container); //, readEdges[tid]);
       gettimeofday(&e, NULL);
       fprintf(stderr, "\nCOARSENING part %u took: %.3lf \n", part, tmDiff(s, e));
 
-      initpartition(tid, last_cgraph);
+//      initpartition(tid, last_cgraph);
 
       //last_cgraph = container;
       std::map<KeyType, std::vector<ValueType>> cgraph(last_cgraph);
-      unsigned level = ii[tid].levels;
+//      unsigned level = ii[tid].levels;
       gettimeofday(&s, NULL);
-*/
+
       int level = 0;
       do{
         fprintf(stderr, "\n*****Tid: %d Refining LEVEL: %u *****\n", tid, level);
         //TODO: to refine all coarser level graphs -- clgraph
         //std::map<KeyType, std::vector<ValueType>> cgraph(clgraph[tid][level]);
         // refining the coarsest level graph which is in memory and fetching the finer levels later
-        refinepartition(tid, container);
-        fprintf(stderr,"\nTID: %d Waiting after refine ", tid);
+        refinepartition(tid, cgraph);
+        //refinepartition(tid, container);
+        efprintf(stderr,"\nTID: %d Waiting after refine ", tid);
         pthread_barrier_wait(&(barWait));
         
         //project partition to finer level  
         IdType k;
         fprintf(stderr,"\nTID: %d Projecting partition ", tid);
-        //for(auto fit = cgraph.begin(); fit != cgraph.end(); fit++){
-        for(auto fit = container.begin(); fit != container.end(); fit++){
+        for(auto fit = cgraph.begin(); fit != cgraph.end(); fit++){
+        //for(auto fit = container.begin(); fit != container.end(); fit++){
           k = cmap[tid][fit->first];
           //fprintf(stderr,"\ntid: %d fit->first: %u, k: %u, gWhere: %d ", tid, fit->first, k, gWhere[fit->first]); 
           pthread_mutex_lock(&locks[tid]);
@@ -258,10 +259,10 @@ class MtMetis : public MapReduce<KeyType, ValueType>
         unsigned CoarsenTo = 100; //gk_max((nvtxs)/(20*std::log2(nparts)), 30*(nparts));
         gcd[tid][level].startIndex = 0;
 
-        do{
+        //do{
           cgraph = MATCH_RM(tid, cgraph, nedges, level);
           //  number of vertices in coarsened graph
-          gcd[tid][level].indexCount = gcd[tid][level].endIndex - gcd[tid][level].startIndex;
+/*          gcd[tid][level].indexCount = gcd[tid][level].endIndex - gcd[tid][level].startIndex;
           IdType nItems = gcd[tid][level].cnvtxs;
 
           if(cnvtxs != gcd[tid][level].cnvtxs)
@@ -274,10 +275,10 @@ class MtMetis : public MapReduce<KeyType, ValueType>
          // TODO:: store in clgraph (level) instead of writing to disk
          // this->diskWriteContainer(tid, gcd[tid][level].startIndex, nItems, cgraph.begin(), cgraph.end());
           efprintf(stderr,"\nTID: %d, AFTER writing cgraph size: %u, startKey: %u level: %d", tid, cgraph.size(), gcd[tid][level].startIndex, level);
-
+*/
           /*InMemoryContainer<KeyType, ValueType> container = this->diskReadContainer(tid, gcd[tid][level].startIndex, nItems);
             fprintf(stderr,"\nTID: %d, After Reading cgraph size: %u, startKey: %u ", tid, container.size(), gcd[tid][level].startIndex); */
-          level++;
+  /*        level++;
           gcd[tid][level].startIndex = nItems;
           ii[tid].levels = level;
           efprintf(stderr,"\nTID: %d cnvtxs: %d cnedges: %d CoarsenTo: %d Fraction: %d ", tid, cnvtxs, cnedges, CoarsenTo, COARSEN_FRACTION*cnvtxs);
@@ -285,7 +286,7 @@ class MtMetis : public MapReduce<KeyType, ValueType>
         while (gcd[tid][level-1].cnvtxs > CoarsenTo &&
             // gcd[tid][level-1].cnvtxs < COARSEN_FRACTION*cnvtxs && //graph->finer->nvtxs &&
             gcd[tid][level-1].cnedges > (gcd[tid][level-1].cnvtxs)/2);  
-
+*/
         // return last coarses graph
         return cgraph;
       }
@@ -366,6 +367,12 @@ class MtMetis : public MapReduce<KeyType, ValueType>
           // fprintf(stderr,"\nTID: %d CreateCoarse First: %u match[v]: %u ", tid, v, match[v]);
           if ((u = match[tid][v]) < v)
             continue;
+          IdType to = it->first;
+          //unsigned bufferId = tid % nparts; //hashKey(to) % this->getCols();
+          // unsigned part = rand() % this->getCols(); //nparts;
+          unsigned part = tid % this->getCols();
+          if(where[part].at(to) == INIT_VAL)
+            where[part].at(to) = part; //bufferId;
 
           nedges = 0;
           for(unsigned vit=0; vit <it->second.size(); vit++){  //adjncy of v
@@ -377,10 +384,15 @@ class MtMetis : public MapReduce<KeyType, ValueType>
   //            htable[k] = nedges++;
             if(k == UNMATCHED)
               nedges++;    
+            IdType from = it->second[vit];
+            //   unsigned whereFrom = hashKey(from) % this->getCols();
+            if(where[part].at(from) == INIT_VAL)
+              where[part].at(from) = part; //bufferId; 
+
             cgraph[it->first].push_back(it->second[vit]);
             //   fprintf(stderr,"\nTID: %d, element: %d k: %u, nedges: %u match: %u htable: %u ", tid,it->second[vit], k, nedges, match[it->second[vit]], htable[k]);
           }
-
+/*
           if(v != u && u < ii[tid].ubIndex){
             //fprintf(stderr,"\nTID: %d before v!=u ", tid);
             auto uit = container.find(u);
@@ -401,7 +413,7 @@ class MtMetis : public MapReduce<KeyType, ValueType>
          // fprintf(stderr,"\nTID: %d endIndex: %d, it->first: %d ", tid, gcd[tid][level].endIndex, it->first);
           if(gcd[tid][level].endIndex < it->first) 
             gcd[tid][level].endIndex = it->first;
-
+*/
           cnedges         += nedges;
         }
         gcd[tid][level].cnedges = cnedges;
