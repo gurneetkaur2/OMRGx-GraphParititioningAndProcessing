@@ -252,7 +252,7 @@ class MtMetis : public MapReduce<KeyType, ValueType>
 //------------------------------------------------
       std::map<KeyType, std::vector<ValueType>> coarsen(const unsigned tid, const InMemoryContainer<KeyType, ValueType>& container){
         std::map<KeyType, std::vector<ValueType>> cgraph(container);
-        fprintf(stderr,"\nTID: %d, Coarsening graph container size: %u ", tid, cgraph.size());
+        efprintf(stderr,"\nTID: %d, Coarsening graph container size: %u ", tid, cgraph.size());
         IdType cnvtxs = 0; IdType cnedges;
         unsigned nedges = ii[tid].edgeCount;
         unsigned level = 0;
@@ -380,7 +380,7 @@ class MtMetis : public MapReduce<KeyType, ValueType>
       void initpartition(const unsigned tid, std::map<KeyType, std::vector<ValueType>> &cgraph){
    //     srand(time(NULL));
 
-        fprintf(stderr,"\nTID: %d init partition cgraph: %u ", tid, cgraph.size());
+        efprintf(stderr,"\nTID: %d init partition cgraph: %u ", tid, cgraph.size());
         for (auto it= cgraph.begin(); it != cgraph.end(); it++){
           IdType to = it->first;
           //unsigned bufferId = tid % nparts; //hashKey(to) % this->getCols();
