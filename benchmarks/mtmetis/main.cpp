@@ -170,7 +170,7 @@ class MtMetis : public MapReduce<KeyType, ValueType>
 //------------------------------------------------
     void* reduce(const unsigned tid, const InMemoryContainer<KeyType, ValueType>& container) {
 
-      efprintf(stderr, "\nTID:%d Starting Reduce\n", tid);
+      fprintf(stderr, "\nTID:%d Starting Reduce\n", tid);
       unsigned part = tid;
       IdType indexCount = 0;
       edgeCounter = 0;
@@ -204,7 +204,7 @@ class MtMetis : public MapReduce<KeyType, ValueType>
       gettimeofday(&e, NULL);
       efprintf(stderr, "\nCOARSENING part %u took: %.3lf \n", part, tmDiff(s, e));
 
-//      initpartition(tid, last_cgraph);
+      initpartition(tid, last_cgraph);
 
       //last_cgraph = container;
       std::map<KeyType, std::vector<ValueType>> cgraph(last_cgraph);
@@ -238,7 +238,7 @@ class MtMetis : public MapReduce<KeyType, ValueType>
       } while(level > 0);
 
       gettimeofday(&e, NULL);
-      efprintf(stderr, "\nRefining Partition for part %u took: %.3lf \n", part, tmDiff(s, e));
+      fprintf(stderr, "\nRefining Partition for part %u took: %.3lf \n", part, tmDiff(s, e));
         //assert(false);
         // store the coarsened graph on disk
 
@@ -252,7 +252,7 @@ class MtMetis : public MapReduce<KeyType, ValueType>
 //------------------------------------------------
       std::map<KeyType, std::vector<ValueType>> coarsen(const unsigned tid, const InMemoryContainer<KeyType, ValueType>& container){
         std::map<KeyType, std::vector<ValueType>> cgraph(container);
-        efprintf(stderr,"\nTID: %d, Coarsening graph container size: %u ", tid, cgraph.size());
+        fprintf(stderr,"\nTID: %d, Coarsening graph container size: %u ", tid, cgraph.size());
         IdType cnvtxs = 0; IdType cnedges;
         unsigned nedges = ii[tid].edgeCount;
         unsigned level = 0;
@@ -380,7 +380,7 @@ class MtMetis : public MapReduce<KeyType, ValueType>
       void initpartition(const unsigned tid, std::map<KeyType, std::vector<ValueType>> &cgraph){
    //     srand(time(NULL));
 
-        efprintf(stderr,"\nTID: %d init partition cgraph: %u ", tid, cgraph.size());
+        fprintf(stderr,"\nTID: %d init partition cgraph: %u ", tid, cgraph.size());
         for (auto it= cgraph.begin(); it != cgraph.end(); it++){
           IdType to = it->first;
           //unsigned bufferId = tid % nparts; //hashKey(to) % this->getCols();
@@ -408,15 +408,15 @@ class MtMetis : public MapReduce<KeyType, ValueType>
         efprintf(stderr,"\nTID: %d Refine partition Partition: %u ", tid, partition.size());
         unsigned counter = 0;
         //unsigned hipart = tid;
-        InMemoryContainer<KeyType, ValueType> inMap;    
-        for(auto it = partition.begin(); it != partition.end(); it++){
-          if (counter >= INTERVAL){
+        //InMemoryContainer<KeyType, ValueType> inMap;    
+        //for(auto it = partition.begin(); it != partition.end(); it++){
+        //  if (counter >= INTERVAL){
           ComputeBECut(tid, gWhere, bndIndMap[tid], partition);
        // pthread_barrier_wait(&(barEdgeCuts));
         //for(unsigned i=0; i < nparts; i++){
             unsigned nparts = this->getCols();
             unsigned hipart = tid; //i;
-            for(unsigned j=tid+1; j < nparts; j++){
+            for(unsigned j=tid; j < nparts; j++){
                 unsigned whereMax = j;
         //for(auto whereMax=tid+1; whereMax < this->getCols(); whereMax++){ //start TID loop
              // if(whereMax == tid) continue;
@@ -434,49 +434,13 @@ class MtMetis : public MapReduce<KeyType, ValueType>
                   where[whereMax].at(vtx2) = hipart; //gWhere[vtx2];
                 }
             }
-            counter = 0;
+         /*   counter = 0;
           } //end if counter loop
           else{
             inMap[it->first] = it->second;
             counter++;
           }
-        }
-           //pthread_barrier_wait(&(barWriteInfo));
-        /*InMemoryContainer<KeyType, ValueType> inMap;    
-        for(auto it = partition.begin(); it != partition.end(); it++){
-          if (counter >= INTERVAL){
-            ComputeBECut(tid, gWhere, bndIndMap[tid], inMap);
-            unsigned nparts = this->getCols();
-            unsigned hipart = tid; unsigned i = tid;
-            for(unsigned j=i+1; j < nparts; j++){
-              unsigned whereMax = j;
-              int maxG = -1;
-              efprintf(stderr, "\nTID: %d, Computing GAIN hipart: %d, whereMax: %d ", tid, hipart, whereMax);
-              do{        
-                maxG = ComputeGain(tid, hipart, whereMax, markMax[hipart], markMin[hipart], inMap);
-              } while(maxG > 0);
-              for(unsigned it=0; it<markMax[hipart].size(); it++){
-                unsigned vtx1 = markMax[hipart].at(it);     //it->first;
-                unsigned vtx2 = markMin[hipart].at(it);
-                //fprintf(stderr,"\nTID %d whereMax %d vtx1: %d vtx2: %d  ", tid, whereMax, vtx1, vtx2);
-                //  pthread_mutex_lock(&locks[tid]);
-                //auto my_lock = std::unique_lock<std::mutex>(m);
-                // gWhere.at(vtx1) = whereMax;
-                // gWhere.at(vtx2) = hipart;
-                //  pthread_mutex_unlock(&locks[tid]);
-                // below assignment will not coincide with other threads as all threads will be working on different vtces - no locks
-                where[hipart].at(vtx1) = whereMax; //gWhere[vtx1];
-                where[hipart].at(vtx2) = hipart; //gWhere[vtx2];
-                where[whereMax].at(vtx1) = whereMax; //gWhere[vtx1];
-                where[whereMax].at(vtx2) = hipart; //gWhere[vtx2];
-              }
-            }
-            counter = 0;
-          } //end if counter loop
-          else{
-            inMap[it->first] = it->second;
-            counter++;
-          }*/
+        }*/
        // } //end for container loop
         efprintf(stderr,"\nTID: %d FINISHED Refine partition ", tid);
       }
@@ -554,6 +518,7 @@ class MtMetis : public MapReduce<KeyType, ValueType>
                     }
                     else{
                       if (std::find(it_map->second.begin(), it_map->second.end(), dst) == it_map->second.end()){
+                      //if (std::find(inMemMap[src].begin(), inMemMap[src].end(), dst) == inMemMap[src].end()){
                         connect = 0;
                       }
                       else
