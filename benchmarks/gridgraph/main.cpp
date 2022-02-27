@@ -237,7 +237,7 @@ niterations = 1;
 hiDegree = 0;
 #endif
 
-int batchSize = atoi(argv[5]);
+unsigned batchSize = atoi(argv[5]);
 int kitems = atoi(argv[6]);
 
 assert(batchSize > 0);
