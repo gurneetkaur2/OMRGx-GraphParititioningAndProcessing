@@ -27,7 +27,6 @@ static std::string outputPrefix = "";
 IdType totalEdges = 0;
 unsigned long long numEdges = 0;
 unsigned edgesPerShard = SHARDSIZE_MB*1024*1024/sizeof(IdType);
-
 //Meta data for GraphChi shard processing
 typedef struct __intervalInfo {
   IdType lbEdgeCount;
@@ -62,6 +61,7 @@ __thread IdType totalRecords = 0;
 //__thread IdType edgeCounter = 0;
 //pagerank for previous and next iteration
   std::vector<Edge>* readEdges;
+std::vector<double>* ds_times;
 static pthread_barrier_t barCompute;
 static pthread_barrier_t barWait;
 unsigned *ssIndex;
@@ -84,6 +84,7 @@ class GraphChi : public MapReduce<KeyType, ValueType>
 
   void writeInit(unsigned nCols, unsigned nVtces){
       readEdges = new std::vector<Edge>[nCols];
+      ds_times = new std::vector<double>[nCols];
       //prOutput = new std::vector<IdType>[nCols];
       edgeCounter = 0;
       iteration = 0;
@@ -141,7 +142,8 @@ unsigned setPartitionId(const unsigned tid)
       e.rank = 1.0/nvertices;
       e.vRank = 1.0/nvertices;
       e.numNeighbors = 0;
-      
+
+      ds_times[tid] = 0.0;
     // fprintf(stderr,"\nInside before reduce ************ Container size: %d ECounter: %d  ", this->getContainerSize(), ii[tid].ubEdgeCount);
       //for (unsigned j = 0; j<=nvertices; ++j) {
       for (unsigned j = 0; j<ii[tid].ubEdgeCount; ++j) {
@@ -154,6 +156,7 @@ unsigned setPartitionId(const unsigned tid)
 
   void* reduce(const unsigned tid, const InMemoryContainer<KeyType, ValueType>& container) {
     //BuildGraphChi Metadata
+    double time_ds = -getTimer();
     unsigned shard = tid;
     IdType indexCount = 0;
      //fprintf(stderr,"\nInside reduce ************ Container size: %d ", container.size());
@@ -224,6 +227,8 @@ unsigned setPartitionId(const unsigned tid)
     efprintf(stderr, "Shard: %u, Interval: %u, Start: %zu, End: %zu, Length: %zu\n", tid, j, gcd[tid][j].startEdgeIndex, gcd[tid][j].endEdgeIndex, gcd[tid][j].length);
     }
    
+    time_ds += getTimer();
+    ds_times[tid] += time_ds;
     efprintf(stderr, "%c---------------------------------\n", '-');
     // ***************** Done building meta data *****************
    efprintf(stderr, "Sorting memory shard %u took: %.3lf\n", memoryShard, tmDiff(s, e));
@@ -405,6 +410,9 @@ ssIndex = (unsigned *) calloc(nreducers, sizeof(unsigned)); assert(ssIndex != NU
 double runTime = -getTimer();
 gc.run();
 runTime += getTimer();
+
+auto ds_time = max_element(std::begin(ds_times), std::end(ds_times));
+std::cout << " Reduce time : " << *ds_time << " (msec)" << std::endl;
 
 std::cout << "Main::Run time : " << runTime << " (msec)" << std::endl;
 free(ii); free(gcd); free(ssIndex); //free(prOutput);
