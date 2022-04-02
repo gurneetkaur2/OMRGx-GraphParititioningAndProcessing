@@ -61,7 +61,7 @@ __thread IdType totalRecords = 0;
 //__thread IdType edgeCounter = 0;
 //pagerank for previous and next iteration
   std::vector<Edge>* readEdges;
-std::vector<double>* ds_times;
+std::vector<double> ds_times;
 static pthread_barrier_t barCompute;
 static pthread_barrier_t barWait;
 unsigned *ssIndex;
@@ -84,12 +84,13 @@ class GraphChi : public MapReduce<KeyType, ValueType>
 
   void writeInit(unsigned nCols, unsigned nVtces){
       readEdges = new std::vector<Edge>[nCols];
-      ds_times = new std::vector<double>[nCols];
+    //  ds_times = new std::vector<double>[nCols];
       //prOutput = new std::vector<IdType>[nCols];
       edgeCounter = 0;
       iteration = 0;
       efprintf(stderr,"\nInside writeINIT ************NOT EMPTY Vertices: %d ", nvertices);
- /*    for(unsigned i=0; i<nCols; i++){ 
+      ds_times.resize(nCols, 0.0);
+/*    for(unsigned i=0; i<nCols; i++){ 
         for(IdType j=0; j<=nVtces; j++) 
           prOutput[i][j] = -1;
      }*/
@@ -143,7 +144,7 @@ unsigned setPartitionId(const unsigned tid)
       e.vRank = 1.0/nvertices;
       e.numNeighbors = 0;
 
-      ds_times[tid] = 0.0;
+      //ds_times[tid] = 0.0;
     // fprintf(stderr,"\nInside before reduce ************ Container size: %d ECounter: %d  ", this->getContainerSize(), ii[tid].ubEdgeCount);
       //for (unsigned j = 0; j<=nvertices; ++j) {
       for (unsigned j = 0; j<ii[tid].ubEdgeCount; ++j) {
