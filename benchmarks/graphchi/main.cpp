@@ -62,6 +62,7 @@ __thread IdType totalRecords = 0;
 //pagerank for previous and next iteration
   std::vector<Edge>* readEdges;
 std::vector<double> ds_times;
+std::vector<double> pr_times;
 static pthread_barrier_t barCompute;
 static pthread_barrier_t barWait;
 unsigned *ssIndex;
@@ -84,12 +85,12 @@ class GraphChi : public MapReduce<KeyType, ValueType>
 
   void writeInit(unsigned nCols, unsigned nVtces){
       readEdges = new std::vector<Edge>[nCols];
-    //  ds_times = new std::vector<double>[nCols];
       //prOutput = new std::vector<IdType>[nCols];
       edgeCounter = 0;
       iteration = 0;
       efprintf(stderr,"\nInside writeINIT ************NOT EMPTY Vertices: %d ", nvertices);
       ds_times.resize(nCols, 0.0);
+      pr_times.resize(nCols, 0.0);
 /*    for(unsigned i=0; i<nCols; i++){ 
         for(IdType j=0; j<=nVtces; j++) 
           prOutput[i][j] = -1;
@@ -144,7 +145,6 @@ unsigned setPartitionId(const unsigned tid)
       e.vRank = 1.0/nvertices;
       e.numNeighbors = 0;
 
-      //ds_times[tid] = 0.0;
     // fprintf(stderr,"\nInside before reduce ************ Container size: %d ECounter: %d  ", this->getContainerSize(), ii[tid].ubEdgeCount);
       //for (unsigned j = 0; j<=nvertices; ++j) {
       for (unsigned j = 0; j<ii[tid].ubEdgeCount; ++j) {
@@ -238,6 +238,7 @@ unsigned setPartitionId(const unsigned tid)
     // then parallel-process shard -- calculate Pagerank
     gettimeofday(&s, NULL);
                                                           
+    double time_pr = -getTimer();
        efprintf(stderr, "TID: %d, PR Processing shard: %u \n", tid, memoryShard);
     for(unsigned i= 0; i<vertices.size(); ) { 
        IdType dst = vertices[i]->dst;
@@ -273,6 +274,8 @@ unsigned setPartitionId(const unsigned tid)
        }
     }
   }
+    time_pr += getTimer();
+    pr_times[tid] += time_pr;
      gettimeofday(&e, NULL);
      efprintf(stderr, "!!!!!Parallel processing of subgraph for memory shard %u took: %.3lf\n", memoryShard, tmDiff(s, e));
      efprintf(stderr, "-------------------------%c\n", '-');
@@ -413,7 +416,10 @@ gc.run();
 runTime += getTimer();
 
 auto ds_time = max_element(std::begin(ds_times), std::end(ds_times));
-std::cout << " Reduce time : " << *ds_time << " (msec)" << std::endl;
+std::cout << " Data Structure time : " << *ds_time << " (msec)" << std::endl;
+
+auto pr_time = max_element(std::begin(pr_times), std::end(pr_times));
+std::cout << " Page Rank Processing time : " << *pr_time << " (msec)" << std::endl;
 
 std::cout << "Main::Run time : " << runTime << " (msec)" << std::endl;
 free(ii); free(gcd); free(ssIndex); //free(prOutput);
