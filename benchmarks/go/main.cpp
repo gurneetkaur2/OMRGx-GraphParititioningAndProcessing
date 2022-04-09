@@ -1,12 +1,12 @@
-#ifdef USE_ONE_PHASE_IO
-#include "recordtype.h"
-#else
+//#ifdef USE_ONE_PHASE_IO
+//#include "recordtype.h"
+//#else
 #include "data.pb.h"
-#endif
+//#endif
 
 #define USE_NUMERICAL_HASH
 #define INIT_VAL 5000
-#define INTERVAL 20
+
 #include "../../engine/mapreduce.hpp"
 #include <iostream>
 #include <sstream>
@@ -15,21 +15,22 @@
 #include "pthread.h"
 #include <ctime>
 #include <cstdlib>
-
-//NOTE: input file must be numbered for Graphs when using fileIds
+#include<mutex>
 
 static int nvertices;
 static int nmappers;
 static int nReducers;
+std::mutex m;
 //static uint64_t countTotalWords = 0;
 //pthread_mutex_t countTotal;
+const long double DAMPING_FACTOR = 0.85; // Google's recommendation in original paper.
+const long double TOLERANCE = (1e-1);
 //-------------------------------------------------
 // WordCount walk-through: 
 // test- makes no 
 
 //  - http://hadoop.apache.org/docs/current/hadoop-mapreduce-client/hadoop-mapreduce-client-core/MapReduceTutorial.html#Walk-through
 __thread unsigned iteration = 0;
-//__thread unsigned totalPECuts = 0;
 static std::string outputPrefix = "";
 static pthread_barrier_t barCompute;
 static pthread_barrier_t barEdgeCuts;
@@ -38,11 +39,12 @@ static pthread_barrier_t barWriteInfo;
 static pthread_barrier_t barAfterRefine;
 static pthread_barrier_t barClear;
 static pthread_barrier_t barShutdown;
+std::vector<double> pr_times;
 
 template <typename KeyType, typename ValueType>
 class Go : public MapReduce<KeyType, ValueType>
 {
-  // static thread_local uint64_t countThreadWords;
+ // static thread_local uint64_t countThreadWords;
   //static thread_local std::vector<unsigned> prev; // = (nvertices, -1);
   //static thread_local std::vector<unsigned> next; // = (nvertices, -1);
   static thread_local double stime;
@@ -61,25 +63,10 @@ class Go : public MapReduce<KeyType, ValueType>
   std::set<unsigned>* fetchPIds;
   std::map<unsigned, unsigned> pIdStarted;
 
-  unsigned totalCuts;
-
+//  std::vector<unsigned> nNbrs; // = (nvertices, -1);
   public:
 
   void* beforeMap(const unsigned tid) {
-    //next = new std::vector<double>[nmappers];
-    /* unsigned part = tid % this->getCols();
-       fprintf(stderr, "TID: %d, nvert:  %d, part: %d \n", tid, nvertices, part);
-       for (unsigned i = 0; i<=nvertices; ++i) {
-    // fprintf(stderr, "TID: %d, Inside where i: %d \n", tid, i);
-    where[part].push_back(INIT_VAL);
-    // fprintf(stderr, "TID: %d,Before init gWhere \n", tid);
-    if(tid==0){
-    gWhere.push_back(-1);
-    }
-    }
-    //  fprintf(stderr, "\n TID: %d, BEFORE key: %d prev: %f next: %f rank: %.2f \n", tid, i, prev[tid][i], next[tid][i], (1/nvertices));
-    fprintf(stderr, "TID: %d, After assigning init values \n", tid);
-     */
     return NULL;
   }
 
@@ -94,21 +81,19 @@ class Go : public MapReduce<KeyType, ValueType>
     for (unsigned j = 0; j<=nVtces; ++j) {
       gWhere.push_back(-1);
     }
+  pr_times.resize(nCols, 0.0);
   }
 
-  unsigned setPartitionId(const unsigned tid)
-  {
+ unsigned setPartitionId(const unsigned tid)
+   {
     unsigned nCols = this->getCols();
-    //fprintf(stderr,"\nTID: %d writing to partition: %d " , tid, tid % nCols);
-    return -1; //tid % nCols;
-  }
+             //fprintf(stderr,"\nTID: %d writing to partition: %d " , tid, tid % nCols);
+    return  -1; //tid % nCols;
+   }
 
 
   void* map(const unsigned tid, const unsigned fileId, const std::string& input, const unsigned nbufferId, const unsigned hiDegree)
-    //void* map(const unsigned tid, const std::string& input, const unsigned lineId, const unsigned nbufferId)
   {
-    //    fprintf(stderr, "TID: %d,Inside Map \n", tid);
-    //pthread_barrier_wait(&(barClear));
     std::stringstream inputStream(input);
     unsigned to, token;
     std::vector<unsigned> from;
@@ -117,32 +102,36 @@ class Go : public MapReduce<KeyType, ValueType>
     while(inputStream >> token){
       from.push_back(token);
     }
-    //TODO: handle HID
-    unsigned bufferId = hashKey(to) % nReducers;
-    unsigned part = tid % nReducers;
+    unsigned nCols = this->getCols();
+    unsigned bufferId = hashKey(to) % nCols;
+    unsigned part = tid % nCols;
 
     if(where[part].at(to) == INIT_VAL)
       where[part].at(to) = bufferId;
 
+
     for(unsigned i = 0; i < from.size(); ++i){
-      //   fprintf(stderr,"\nVID: %d FROM: %zu size: %zu", to, from[i], from.size());
-      unsigned whereFrom = hashKey(from[i]) % nReducers;
+      //                fprintf(stderr,"\nVID: %d FROM: %zu size: %zu", to, from[i], from.size());
+      Edge e;
+      e.src = from[i];
+      e.dst = to;
+      e.rank = 1.0/nvertices;
+      e.vRank = 1.0/nvertices;
+      e.numNeighbors = from.size();
+      
+      unsigned whereFrom = hashKey(from[i]) % nCols;
       if(where[part].at(from[i]) == INIT_VAL)
         where[part].at(from[i]) = whereFrom; // partition ID of where 'from' will go
-
-      if (from.size() < hiDegree){
-        this->writeBuf(tid, to, from[i], bufferId, 0);
-
-      }
-      else{
-        this->writeBuf(tid, to, from[i], bufferId, from.size());
-        // this->writeBuf(tid, lineId, from[i], nbufferId);
-      }
+      
+      if (from.size() < hiDegree)
+        this->writeBuf(tid, to, e, bufferId, 0);
+      else
+        this->writeBuf(tid, to, e, nbufferId, from.size());
+      //this->writeBuf(tid, to, from[i], nbufferId, from.size());
     }
 
     return NULL;
   }
-
 
   void* initRefineStructs() {
     //initialize the locks to be used for synchronization
@@ -164,13 +153,11 @@ class Go : public MapReduce<KeyType, ValueType>
     totalPECuts = new unsigned long long[nReducers];
     // fetchPIds = new std::set<unsigned>[nReducers];
   }
-
   void* beforeReduce(const unsigned tid) {
-    //  unsigned int iters = 0;
-    //copy local partition ids to gWhere
-     fprintf(stderr, "\nTID: %d,BEFORE Reducing values \n", tid);
+      //  unsigned int iters = 0;
+     efprintf(stderr, "\nTID: %d,BEFORE Reducing values \n", tid);
     if(tid ==0){
-//      this->gCopy(tid, gWhere);
+      //this->gCopy(tid, gWhere); //performance
     }
 
     // fprintf(stderr, "\nTID: %d,BEFORE RefineINIT \n", tid);
@@ -187,61 +174,26 @@ class Go : public MapReduce<KeyType, ValueType>
     //fprintf(stderr,"\ntTID %d, RefineINit fetchPID size: %d ----", tid, fetchPIds[tid].size());
     totalPECuts[tid] = 0;
     //bndSet = false;
-    totalCuts = 0; 
+ //   totalCuts = 0; 
   }
-
-  //--------------------------------------------------
+  
+  
   void* reduce(const unsigned tid, const InMemoryContainer<KeyType, ValueType>& container){
-    //countThreadWords += std::accumulate(values.begin(), values.end(), 0);
-    // iterate each vertex neighbor in adjlist
-    // pthread_barrier_wait(&(barWriteInfo));
      efprintf(stderr, "\nTID: %d, Reducing values Container Size: %d", tid, container.size());
-  /*  unsigned counter = 0;
-    InMemoryContainer<KeyType, ValueType> inMap;
-    unsigned hipart = tid;
-    for(auto it = container.begin(); it != container.end(); it++){
-     if (counter >= INTERVAL){
-        ComputeBECut(tid, gWhere, bndIndMap[tid], inMap);          
-    */ unsigned hipart = tid;
-//       ComputeBECut(tid, where[tid], bndIndMap[tid], container);          
-    // unsigned whereMax;
-    /*  for(auto it = fetchPIds[tid].begin(); it != fetchPIds[tid].end(); ++it) { 
-         unsigned whereMax = *it; 
-      // fprintf(stderr, "\nTID: %d, WHEREMAX: %d ", tid, whereMax);
-         if(whereMax == tid){
-        //      fprintf(stderr, "\nTID: %d pIdsCompleted[%d][%d]: %d ", tid, hipart, whereMax, pIdsCompleted[hipart][whereMax]);
-            pIdsCompleted[tid][*it] = true;
-        //    fprintf(stderr, "\nTID: %d going to NEXT Iter", tid);
-            continue;
-         }
-         else if (hipart < nReducers && whereMax >= nReducers){
-          pIdsCompleted[tid][*it] = true;
-          continue;
-         }
-         else if ( hipart >= nReducers && whereMax < nReducers) {
-          pIdsCompleted[tid][*it] = true;
-          continue;
-         }
-        bool ret = this->checkPIDStarted(tid, hipart, whereMax);
-        efprintf(stderr, "\nFINAL TID: %d, WHEREMAX: %d, Ret: %d !!!", tid, whereMax, ret);
-      *///      fprintf(stderr, "\nTID: %d, refining with: %d, ret: %d ", tid, whereMax, ret);
-      ComputeBECut(tid, gWhere, bndIndMap[tid], container);
+      unsigned hipart = tid;
+      ComputeBECut(tid, gWhere, bndIndMap[tid], dTable[tid], container);
       // wait for other threads to compute edgecuts before calculating dvalues values
-      // fprintf(stderr, "\nTID: %d, Before BarEDGECUTS ", tid);
+       efprintf(stderr, "\nTID: %d, Before BarEDGECUTS , nReducers: %d ", tid, nReducers);
       pthread_barrier_wait(&(barEdgeCuts)); 
       for(auto whereMax=tid; whereMax < this->getCols(); whereMax++){ //start TID loop
 
       efprintf(stderr, "\nTID: %d, Computing Gain  Container: %d", tid, container.size());
-        //if(ret == true){
           int maxG = -1;     
           do{
             maxG = computeGain(tid, hipart, whereMax, markMax[hipart], markMin[hipart], container);
           //  fprintf(stderr, "\nTID: %d, MaxG > 0: %d", tid, maxG);
           } while(maxG > 0);  //end do
-       // } // end if ret
 
-      //  pthread_barrier_wait(&(barWriteInfo)); 
-       // if(ret == true) {
         //writePartInfo
         efprintf(stderr,"\nTID %d going to write part markMax size: %d ", tid, markMax[hipart].size());
         for(unsigned it=0; it<markMax[hipart].size(); it++){
@@ -262,97 +214,76 @@ class Go : public MapReduce<KeyType, ValueType>
           where[whereMax].at(vtx2) = vtx2; //gWhere[vtx2];
           pthread_mutex_unlock(&locks[tid]);
         }
-     // }
-      //TODO: This should be set true after the entire iteration is complete-- problem addressed below by clear()
-  //    pIdsCompleted[hipart][whereMax] = 1; //true;
-      //  fprintf(stderr, "\nTID: %d, AFTER pIdsCompleted: %d ", tid, pIdsCompleted[hipart][whereMax]);
-  }  // end of tid loop
-    /*  counter = 0;
-      }//end if counter loop
-      else{
-          inMap[it->first] = it->second;
-          counter++;
       }
-     } //end for container loop
-*/
     pthread_barrier_wait(&(barWriteInfo));
     efprintf(stderr, "\nTID: %d, DONE ", tid);
-    //  pthread_barrier_wait(&(barClear));
-    // clearing up for next round of fetch from disk. It should be reset for each call to reduce operation so that each batch is refined against other when fetched from disk each time.
-   // pIdsCompleted[tid].clear();
+    //}
+    long double sum = 0.0;
+   efprintf(stderr, "TID: %d, Running PR \n", tid);
+   double time_pr = -getTimer();
+    
+   std::vector<Edge *> vertices;
+   IdType v;
+   for(auto it = container.begin(); it != container.end(); it++){ 
+      unsigned key = it->first;
+        for(int k=0; k<it->second.size(); k++) {
+         Edge e = it->second[k];
+         v = e.dst;
+         vertices.push_back(&e);
+         while(k<it->second.size() && v==e.dst) k++; 
+        }
+   }
+     for(unsigned i= 0; i<vertices.size(); ) {
+        IdType dst = vertices[i]->dst;
+        long double sum = 0.0;
+        // process neighbors
+        unsigned dstStartIndex = i;
+        while(i<vertices.size() && dst == vertices[i]->dst){
+          if(vertices[i]->numNeighbors > 0){
+            sum += (vertices[i]->rank / vertices[i]->numNeighbors);
+          }
+          i++;
+        }
+        float rank = (DAMPING_FACTOR * sum) + (1 - DAMPING_FACTOR);
+        unsigned dstEndIndex = i;
+        for(unsigned dstIndex = dstStartIndex; dstIndex<dstEndIndex; dstIndex++){
+            vertices[dstIndex]->vRank = rank;
+        }
+     }
+     time_pr += getTimer();
+     pr_times[tid] += time_pr;
     clearMemorystructures(tid);
-    //    pIdStarted.clear(); //causes seg fault here
     return NULL;
-    }
+  }
 
-    // void computeBECut(const unsigned tid, std::map<unsigned, unsigned> refineMap)
+  void* updateReduceIter(const unsigned tid) {
 
-    void* updateReduceIter(const unsigned tid) {
-
-      fprintf(stderr, "\nTID: %d, UPDATE reduce ITer ", tid);
-      // pthread_barrier_wait(&(barCompute));
-
-      // clearMemorystructures(tid);
-
-      ++iteration;
-      if(iteration >= this->getIterations()){
-        efprintf(stderr, "\nTID: %d, Iteration: %d Complete ", tid, iteration);
-        don = true;
-        // done.at(tid) = 1;
-        //      break;
-        return NULL;
-      }
-     // this->notDone(tid);
-
-      efprintf(stderr, "\nTID: %d, Going to REFINEINIT ", tid);
-     // refineInit(tid);
-      fprintf(stderr,"\nTID: %d, iteration: %d ----", tid, iteration);
-
+    ++iteration;
+    if(iteration >= this->getIterations()){
+      don = true;
       return NULL;
     }
+    fprintf(stderr,"\nTID: %d, iteration: %d ----", tid, iteration);
+//fprintf(stderr, "pagerank: thread %u iteration %d took %.3lf ms to process %llu vertices and %llu edges\n", tid, iteration, timevalToDouble(e) - timevalToDouble(s), nvertices, nedges);
+//}
 
+   return NULL;
+  }
 
-    void* afterReduce(const unsigned tid) {
-      // fprintf(stderr, "AfterReduce\n");
+  void* afterReduce(const unsigned tid) {
       fprintf(stderr, "\nthread %u waiting for others to finish Refine\n", tid);
 
-      if(tid == 0)
-        this->gCopy(tid, gWhere);
+    //  if(tid == 0)
+    //    this->gCopy(tid, gWhere);
 
       pthread_barrier_wait(&(barAfterRefine));
 
-     /* stime = 0.0;
-      std::string fileName = outputPrefix + std::to_string(tid);
-      printParts(tid, fileName.c_str());
-      //    ofile.close();
-      this->subtractReduceTimes(tid, stime);
-
-      //pthread_barrier_wait(&(barClear));
-      // refineInit(tid);
-      // clearMemorystructures(tid);
-      //bndIndMap[tid].clear();
-      //dTable[tid].clear();
-      totalPECuts[tid] = 0; //will need to reset this once I figure out how to recalculate edge cuts
-      //   bndSet = false;
-      //cread(tid); //TODO need to find alternate way
-      this->readAfterReduce(tid);
-      pthread_barrier_wait(&(barRefine));
-
-      if(tid == 0){
-        totalCuts = 0;
-        //  time_refine += getTimer();
-
-        fprintf(stderr,"\n Total EdgeCuts: %d\n", this->countTotalPECut(tid));
-        //fprintf(stderr, "pagerank: thread %u iteration %d took %.3lf ms to process %llu vertices and %llu edges\n", tid, iteration, timevalToDouble(e) - timevalToDouble(s), nvertices, nedges);
-      }
-      pthread_barrier_wait(&(barShutdown));
-      */
       if(tid == 0){
         clearRefineStructures();
       }
-      return NULL;
-    }
-
+    return NULL;
+  }
+    
     //---------------
     void readAfterReduce(const unsigned tid) {
       // this->cRead(tid);
@@ -362,7 +293,7 @@ class Go : public MapReduce<KeyType, ValueType>
         InMemoryContainer<KeyType, ValueType>& container = this->cRead(tid);
         // fprintf(stderr, "\nTID: %d, Reading Container iSize: %d" , tid, container.size());
 
-        ComputeBECut(tid, where[tid], bndIndMap[tid], container);
+        ComputeBECut(tid, where[tid], bndIndMap[tid], dTable[tid], container);
       } 
     }
 
@@ -372,16 +303,19 @@ class Go : public MapReduce<KeyType, ValueType>
       //return container; 
       //   }
   }
-  //---------------
-  void ComputeBECut(const unsigned tid, const std::vector<unsigned long>& where, InMemTable& bndind, const InMemoryContainer<KeyType, ValueType>& inMemMap) {
-    IdType src;
+  //--------------- 
+  void ComputeBECut(const unsigned tid, const std::vector<unsigned long>& where, InMemTable& bndind, InMemTable& dTable, const InMemoryContainer<KeyType, ValueType>& inMemMap) {
+    IdType dst;
     std::vector<unsigned> bndvert;
-    //fprintf(stderr, "\nTID: %d, Computing EdgeCuts COntainer Size: %d ", tid, inMemMap.size());
+    efprintf(stderr, "\nTID: %d, Computing EdgeCuts COntainer Size: %d ", tid, inMemMap.size());
 
     for (InMemoryContainerConstIterator<KeyType, ValueType> it = inMemMap.begin(); it != inMemMap.end(); ++it) {
-      src = it->first;
-      for (std::vector<unsigned>::const_iterator vit = it->second.begin(); vit != it->second.end(); ++vit){
-        bndvert.push_back(*vit);
+      //dst = it->first;
+      //for (auto vit = it->second.begin(); vit != it->second.end(); ++vit){
+      for(int k=0; k<it->second.size(); k++) {
+        Edge e = it->second[k];
+        dst = e.dst;
+        bndvert.push_back(e.src); //Note: here src and dst are used opposite way src - adjacency list
       }
       //  refineMap[tid] = key; // assuming each thread writes at different index
       unsigned nbrs = bndvert.size();
@@ -389,21 +323,22 @@ class Go : public MapReduce<KeyType, ValueType>
       int costE = 0;  //count external cost of edge
       //compute the number of edges cut for every key-values pair in the map
       for(auto it = bndvert.begin(); it != bndvert.end(); ++it) { 
-        IdType dst = *it;
-        if( where[dst] != INIT_VAL && where[src] != where[dst] ) {
+        IdType src = *it;
+        if( where[src] != INIT_VAL && where[dst] != where[src] ) {
           //  fprintf(stderr,"\nTID: %d, where[%d]: %d != where[%d]: %d ", tid, src, where[src], dst, where[dst]);
           totalPECuts[tid]++;
           costE++;
-          bndind[dst]++; // = costE ;     
+          bndind[src]++; // = costE ;     
         }
       }
       bndvert.clear();
 
       //calculate d-values
-      // fprintf(stderr, "\nTID: %d, Calculate DVals ", tid);
       unsigned costI = nbrs - costE; 
-      unsigned dsrc = costE - costI;      // External - Internal cost
-      dTable[tid][src] = dsrc; 
+      unsigned ddst = costE - costI;      // External - Internal cost
+       efprintf(stderr, "\nTID: %d, Calculate DVals dst: %d ddst: %d ", tid, dst, ddst);
+      //dTable[dst] = ddst;
+      dTable[dst] = ddst; 
     } //end Compute edgecuts main Loop
     //   pthread_barrier_wait(&(barCompute)); //wait for the dvalues from all the threads to be populated
     // fprintf(stderr, "\nTID: %d,Finished Computing EdgeCuts ****** ", tid);
@@ -444,11 +379,22 @@ class Go : public MapReduce<KeyType, ValueType>
                   continue;
                 }
                 else{
-                  if (std::find(it_map->second.begin(), it_map->second.end(), dst) == it_map->second.end()){
+                  for(auto vit = it_map->second.begin(); vit != it_map->second.end(); vit++){
+                    Edge e = *vit;
+                    IdType v = e.src;
+                    if(v== dst){
+                      connect = 1;
+                      break;
+                    }
+                    else 
+                      connect = 0;
+                  }    
+               /*   if (std::find(it_map->second.begin(), it_map->second.end(), dst) == it_map->second.end()){
                     connect = 0;
                   }
                   else
                     connect = 1;
+                    */
                   // check if src is a boundary vertex, then calculate gain
                   // auto it_bnd = bndIndMap[whereMax].find(src);
                   // if(it_bnd != bndIndMap[whereMax].end()){  
@@ -484,34 +430,7 @@ class Go : public MapReduce<KeyType, ValueType>
       }
       return -1;
   }
-
-
-  void printParts(const unsigned tid, std::string fileName) {
-    //       std::cout<<std::endl<<"Partition "<< tid <<std::endl;
-    //  std::string outputPrefix = "testing";
-    ofile.open(fileName);
-    assert(ofile.is_open());
-    //   std::cout<<"\nFIlename: "<< fileName <<std::endl;
-    for(unsigned i = 0; i <= nvertices; ++i){
-      if(gWhere[i] != -1 && (gWhere[i] == tid || gWhere[i] == tid % nReducers)){
-        //      std::cout<<"\t"<<i << "\t" << gWhere[i]<< std::endl;
-        ofile<<i << "\t" << gWhere[i]<< std::endl;
-      }
-    }
-    ofile.close();
-  }
-  //---------------
-  unsigned countTotalPECut(const unsigned tid) {
-    //totalCuts = 0;
-    for(unsigned i=0; i<nReducers; i++){
-      //for(auto i=fetchPIds.begin(); i != fetchPIds.end(); ++i){
-      //    fprintf(stderr,"\nTID: %d TotalPECUTs: %d ", tid, totalPECuts[i]);
-      totalCuts += totalPECuts[i];
-    }
-
-    return (totalCuts/2);
-    }
-
+    
     //-----------------------------------
     void clearRefineStructures(){
       for (unsigned i = 0; i < nReducers; i++){
@@ -598,95 +517,76 @@ class Go : public MapReduce<KeyType, ValueType>
       pthread_mutex_unlock(&locks[tid]);
       return ret;
     }
-  };
 
-  template <typename KeyType, typename ValueType>
-    thread_local std::ofstream Go<KeyType, ValueType>::ofile;
-  template <typename KeyType, typename ValueType>
-    thread_local double Go<KeyType, ValueType>::stime;
+};
 
-  template <typename KeyType, typename ValueType>
-    void* combine(const KeyType& key, std::vector<ValueType>& to, const std::vector<ValueType>& from) {
-      to.insert(to.end(), from.begin(), from.end());
-      return NULL;
-    }
 
-  //-------------------------------------------------
-  int main(int argc, char** argv)
+template <typename KeyType, typename ValueType>
+void* combine(const KeyType& key, std::vector<ValueType>& to, const std::vector<ValueType>& from) {
+  to.insert(to.end(), from.begin(), from.end());
+  return NULL;
+}
+
+//-------------------------------------------------
+int main(int argc, char** argv)
+{
+  Go<IdType, Edge> go;
+
+
+  if (argc < 8)
   {
-    Go<unsigned, unsigned> go;
+  std::cout << "Usage: " << argv[0] << " <folderpath> <gb> <nmappers> <nreducers> <batchsize> <kitems> <optional - nvertices> <optional - partitions> <optional - max degree> <optional - partition output prefix>" << std::endl;
 
-    //  std::string select = "";
-    /*  while(true){
-        std::cout << "Please select `GOMR` for graph Processing or `OMR` for regular MR application" << std::endl;
-        std::cin >> select;
-        if (select == "OMR" | select == "GOMR")
-        break;
-        }*/
-    //  std::cout << std::endl;
+  return 0;
+}
 
-    if (argc < 8)
-    {
-      //   std::cout << "Usage: " << argv[0] << " <folderpath> <gb> <nmappers> <nreducers> <batchsize> <kitems>" << std::endl;
-      //   return 0;
-      // }
-      // else if (select == "GOMR" && argc != 9) { 
-    std::cout << "Usage: " << argv[0] << " <folderpath> <gb> <nmappers> <nreducers> <batchsize> <kitems> <optional - nvertices> <optional - partitions> <optional - max degree> <optional - partition output prefix>" << std::endl;
-
-    return 0;
-  }
-
-  std::string folderpath = argv[1];
-  int gb = atoi(argv[2]);
-  nmappers = atoi(argv[3]);
-  nReducers = atoi(argv[4]); // here nreducers = npartitions
-  // int npartitions = 2;
-  int npartitions;
-  int hiDegree;
-  //int nvertices;
-  //  if (select == "OMR")
-  //    nvertices = -1;
+std::string folderpath = argv[1];
+int gb = atoi(argv[2]);
+nmappers = atoi(argv[3]);
+nReducers = atoi(argv[4]);
+int npartitions;
+int hiDegree;
 #ifdef USE_GOMR
-  nvertices = atoi(argv[7]);
-  if(atoi(argv[9]) > 0)
-    hiDegree = atoi(argv[9]);
-  else
-    hiDegree = 0;
-  npartitions = atoi(argv[8]); //partitions
-  outputPrefix = argv[10];
+nvertices = atoi(argv[7]);
+npartitions = atoi(argv[8]);
+outputPrefix = argv[10];
+if(atoi(argv[9]) > 0)
+  hiDegree = atoi(argv[9]);
+else
+hiDegree = 0;
+
 #else
-  nvertices = -1;
-  hiDegree = -1;
-  npartitions = 2; ///partitions = nreducers -- iterations if not using GOMR
+nvertices = -1;
+hiDegree = -1;
+npartitions = 2; ///partitions = nreducers -- iterations if not using GOMR
 #endif
 
-  int batchSize = atoi(argv[5]);
-  int kitems = atoi(argv[6]);
+int batchSize = atoi(argv[5]);
+int kitems = atoi(argv[6]);
 
-  assert(batchSize > 0);
-  //pthread_mutex_init(&countTotal, NULL);
+assert(batchSize > 0);
 
-  // nReducers = nreducers;
-  //initialize barriers
-  pthread_barrier_init(&barRefine, NULL, nReducers);
-  pthread_barrier_init(&barCompute, NULL, nReducers);
-  pthread_barrier_init(&barEdgeCuts, NULL, nReducers);
-  pthread_barrier_init(&barWriteInfo, NULL, nReducers);
-  pthread_barrier_init(&barClear, NULL, nReducers);
-  pthread_barrier_init(&barShutdown, NULL, nReducers);
-  pthread_barrier_init(&barAfterRefine, NULL, nReducers);
-  go.writeInit(nReducers, nvertices);
+pthread_barrier_init(&barRefine, NULL, nReducers);
+pthread_barrier_init(&barCompute, NULL, nReducers);
+pthread_barrier_init(&barEdgeCuts, NULL, nReducers);
+pthread_barrier_init(&barWriteInfo, NULL, nReducers);
+pthread_barrier_init(&barClear, NULL, nReducers);
+pthread_barrier_init(&barShutdown, NULL, nReducers);
+pthread_barrier_init(&barAfterRefine, NULL, nReducers);
 
-  go.init(folderpath, gb, nmappers, nReducers, nvertices, hiDegree, batchSize, kitems, npartitions);
+go.writeInit(nReducers, nvertices);
+go.init(folderpath, gb, nmappers, nReducers, nvertices, hiDegree, batchSize, kitems, npartitions);
+go.initRefineStructs();
 
-  go.initRefineStructs();
-  double runTime = -getTimer();
-  go.run(); 
-  runTime += getTimer();
+double runTime = -getTimer();
+go.run(); 
+runTime += getTimer();
 
-  std::cout << "Main::Run time : " << runTime << " (msec)" << std::endl;
-  //std::cout << "Total words: " << countTotalWords << std::endl;
-  return 0;
-  }
+auto pr_time = max_element(std::begin(pr_times), std::end(pr_times));
+std::cout << " Page Rank Processing time : " << *pr_time << " (msec)" << std::endl;
 
+std::cout << "Main::Run time : " << runTime << " (msec)" << std::endl;
+//std::cout << "Total words: " << countTotalWords << std::endl;
+return 0;
+}
 
