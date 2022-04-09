@@ -77,6 +77,7 @@ static pthread_barrier_t barCompute;
 static pthread_barrier_t barEdgeCuts;
 static pthread_barrier_t barWait;
 std::mutex m;
+std::vector<double> pr_times;
 
 template <typename KeyType, typename ValueType>
 class MtMetis : public MapReduce<KeyType, ValueType>
@@ -125,6 +126,7 @@ class MtMetis : public MapReduce<KeyType, ValueType>
       pthread_mutex_init(&mutex, NULL);
       locks.push_back(mutex);
     }
+  pr_times.resize(nCols, 0.0);
   }
 
 //------------------------------------------------
@@ -153,8 +155,14 @@ class MtMetis : public MapReduce<KeyType, ValueType>
     std::sort(from.begin(), from.end()); // using default comparator
 
     for(unsigned i = 0; i < from.size(); ++i){
+      Edge e;
+      e.src = from[i];
+      e.dst = to;
+      e.rank = 1.0/nvertices;
+      e.vRank = 1.0/nvertices;
+      e.numNeighbors = from.size();
       //     fprintf(stderr,"\tTID: %d, src: %zu, dst: %zu, vrank: %f, rank: %f nNbrs: %u", tid, e.src, e.dst, e.vRank, e.rank, e.numNeighbors);
-      this->writeBuf(tid, to, from[i], nbufferId, 0);
+      this->writeBuf(tid, to, e, nbufferId, 0);
     }
 
     return NULL;
@@ -170,7 +178,7 @@ class MtMetis : public MapReduce<KeyType, ValueType>
 //------------------------------------------------
     void* reduce(const unsigned tid, const InMemoryContainer<KeyType, ValueType>& container) {
 
-      fprintf(stderr, "\nTID:%d Starting Reduce\n", tid);
+      efprintf(stderr, "\nTID:%d Starting Reduce\n", tid);
       unsigned part = tid;
       IdType indexCount = 0;
       edgeCounter = 0;
@@ -244,6 +252,41 @@ class MtMetis : public MapReduce<KeyType, ValueType>
 
         efprintf(stderr,"\n\n****tid: %d Finished refining *** ", tid); 
         pthread_barrier_wait(&(barCompute));
+    
+    long double sum = 0.0;
+   efprintf(stderr, "TID: %d, Running PR \n", tid);
+   double time_pr = -getTimer();
+    
+   std::vector<Edge *> vertices;
+   IdType v;
+   for(auto it = container.begin(); it != container.end(); it++){ 
+      unsigned key = it->first;
+        for(int k=0; k<it->second.size(); k++) {
+         Edge e = it->second[k];
+         v = e.dst;
+         vertices.push_back(&e);
+         while(k<it->second.size() && v==e.dst) k++; 
+        }
+   }
+     for(unsigned i= 0; i<vertices.size(); ) {
+        IdType dst = vertices[i]->dst;
+        long double sum = 0.0;
+        // process neighbors
+        unsigned dstStartIndex = i;
+        while(i<vertices.size() && dst == vertices[i]->dst){
+          if(vertices[i]->numNeighbors > 0){
+            sum += (vertices[i]->rank / vertices[i]->numNeighbors);
+          }
+          i++;
+        }
+        float rank = (DAMPING_FACTOR * sum) + (1 - DAMPING_FACTOR);
+        unsigned dstEndIndex = i;
+        for(unsigned dstIndex = dstStartIndex; dstIndex<dstEndIndex; dstIndex++){
+            vertices[dstIndex]->vRank = rank;
+        }
+     }
+     time_pr += getTimer();
+     pr_times[tid] += time_pr;
         clearMemorystructures(tid);
         return NULL;
       }
@@ -353,7 +396,8 @@ class MtMetis : public MapReduce<KeyType, ValueType>
 
           nedges = 0;
           for(unsigned vit=0; vit <it->second.size(); vit++){  //adjncy of v
-            k = cmap[it->second[vit]]; // num of cnvtxs (coarsened vertices) of this vertex
+	    Edge e = it->second[vit];
+            k = cmap[e.src]; // num of cnvtxs (coarsened vertices) of this vertex
             //fprintf(stderr,"\nTID: %d next Iter vit: %u k: %u ", tid, it->second[vit], k);
             if(k == UNMATCHED || k >ii[tid].ubIndex)
               continue;
@@ -361,12 +405,12 @@ class MtMetis : public MapReduce<KeyType, ValueType>
   //            htable[k] = nedges++;
             if(k == UNMATCHED)
               nedges++;    
-            IdType from = it->second[vit];
+	    IdType from = e.src;
             //   unsigned whereFrom = hashKey(from) % this->getCols();
             if(where[part].at(from) == INIT_VAL)
               where[part].at(from) = part; //bufferId; 
 
-            cgraph[it->first].push_back(it->second[vit]);
+            cgraph[it->first].push_back(e.src);
             //   fprintf(stderr,"\nTID: %d, element: %d k: %u, nedges: %u match: %u htable: %u ", tid,it->second[vit], k, nedges, match[it->second[vit]], htable[k]);
           }
           cnedges         += nedges;
@@ -390,7 +434,8 @@ class MtMetis : public MapReduce<KeyType, ValueType>
             where[part].at(to) = part; //bufferId;
 
           for(auto vit=0; vit <it->second.size(); vit++){
-            IdType from = it->second[vit];
+            Edge e = it->second[vit];
+	    IdType from = e.src;
             //   unsigned whereFrom = hashKey(from) % this->getCols();
             if(where[part].at(from) == INIT_VAL)
               where[part].at(from) = part; //bufferId; 
@@ -448,15 +493,18 @@ class MtMetis : public MapReduce<KeyType, ValueType>
 //------------------------------------------------
 
       void ComputeBECut(const unsigned tid, const std::vector<unsigned long>& where, InMemTable& bndind, const InMemoryContainer<KeyType, ValueType>& partition) {
-        IdType src;
+        IdType dst;
         efprintf(stderr,"\nTID: %d Compute Edgecuts Partition: %u ", tid, partition.size());
         std::vector<unsigned> bndvert;
         for (InMemoryContainerConstIterator<KeyType, ValueType> it = partition.begin(); it != partition.end(); ++it) {
-          src = it->first;
+          dst = it->first;
           //fprintf(stderr,"\nTID: %d src: %d, nbrs: %d dst: ", tid, it->first, it->second.size());
-          for(std::vector<IdType>::const_iterator vit = it->second.begin(); vit != it->second.end(); ++vit){
-            //   fprintf(stderr,"%d\t", *vit);
-            bndvert.push_back(*vit);
+         // for(std::vector<IdType>::const_iterator vit = it->second.begin(); vit != it->second.end(); ++vit){
+          for(int k=0; k<it->second.size(); k++) {
+	    Edge e = it->second[k];
+	    //   fprintf(stderr,"%d\t", *vit);
+            dst = e.dst;
+	    bndvert.push_back(e.src);
           }
           // fprintf(stderr,"\nTid: %d bndvert size: %d ", tid, bndvert.size());
           unsigned nbrs = bndvert.size();
@@ -464,24 +512,24 @@ class MtMetis : public MapReduce<KeyType, ValueType>
           int costE = 0;  //count external cost of edge
           //compute the number of edges cut for every key-values pair in the map
           for(auto it = bndvert.begin(); it != bndvert.end(); ++it) {
-            IdType dst = *it;
+            IdType src = *it;
             //if( where[tid][dst] != INIT_VAL && where[tid][src] != where[tid][dst] ) {
-            if( where[dst] != INIT_VAL && where[src] != where[dst] ) {
+            if( where[src] != INIT_VAL && where[dst] != where[src] ) {
               // fprintf(stderr,"\nTID: %d, where[%d]: %d != where[%d]: %d ", tid, src, gwhere[src], dst, gwhere[dst]);
               totalPECuts[tid]++;
               costE++;
-              bndind[dst]++; // = costE ;     
+              bndind[src]++; // = costE ;     
             }
           }
           bndvert.clear();
           //calculate d-values
-          if( where[src] != INIT_VAL){ //
+          if( where[dst] != INIT_VAL){ //
             unsigned costI = nbrs - costE;
-            unsigned dsrc = costE - costI;      // External - Internal cost
+            unsigned ddst = costE - costI;      // External - Internal cost
             //fprintf(stderr, "\nTID: %d, Calculate DVals src: %d dval: %d, where[src]: %d", tid, src, dsrc, gwhere[src]);
             //   pthread_mutex_lock(&locks[tid]);
             //  auto my_lock = std::unique_lock<std::mutex>(m);
-            dTable[tid][src] = dsrc;
+            dTable[tid][dst] = ddst;
             //    pthread_mutex_unlock(&locks[tid]);
           }
         }
@@ -517,12 +565,16 @@ class MtMetis : public MapReduce<KeyType, ValueType>
                       continue;
                     }
                     else{
-                      if (std::find(it_map->second.begin(), it_map->second.end(), dst) == it_map->second.end()){
-                      //if (std::find(inMemMap[src].begin(), inMemMap[src].end(), dst) == inMemMap[src].end()){
-                        connect = 0;
-                      }
-                      else
-                        connect = 1;
+                      for(auto vit = it_map->second.begin(); vit != it_map->second.end(); vit++){
+	              	Edge e = *vit;
+                   	IdType v = e.src;
+                    	if(v== dst){
+                      	  connect = 1;
+                      	  break;
+                    	}
+                    	else
+                      	  connect = 0;
+                     }
 
                       int currGain = -1;
                       if(!connect)
@@ -666,7 +718,7 @@ class MtMetis : public MapReduce<KeyType, ValueType>
       //-------------------------------------------------
       int main(int argc, char** argv)
       {
-        MtMetis<IdType, IdType> mt;
+        MtMetis<IdType, Edge> mt;
 
         if (argc < 10)
         {
@@ -743,7 +795,10 @@ class MtMetis : public MapReduce<KeyType, ValueType>
         runTime += getTimer();
 
         std::cout << "Main::Run time : " << runTime << " (msec)" << std::endl;
-        free(ii); free(gcd); 
+	auto pr_time = max_element(std::begin(pr_times), std::end(pr_times));
+	std::cout << " Page Rank Processing time : " << *pr_time << " (msec)" << std::endl;
+	
+	free(ii); free(gcd); 
         //free(match); 
         free(perm); //free(cmap);
         MallocExtension::instance()->ReleaseFreeMemory();
