@@ -332,8 +332,10 @@ class MtMetis : public MapReduce<KeyType, ValueType>
            // if(it != container.end()){
            //   for (; last_unmatched<it->second.size(); last_unmatched++) {
               for (; last_unmatched<container[i].size(); last_unmatched++) {
-                j = container[i][last_unmatched]; // pick a random adjacent vertex of i
-                //j = it->second[last_unmatched]; // pick a random adjacent vertex of i
+   		  //Edge e = container[i].begin();
+		  Edge e = container[i][last_unmatched]; // pick a random adjacent vertex of i
+                  j = e.dst;
+		//j = it->second[last_unmatched]; // pick a random adjacent vertex of i
                 //make sure adj vertex is within this container && check if it is unmatched
                 if (match[tid][j] == UNMATCHED) {   
                   // fprintf(stderr,"\nTID: %d, j: %u matched: %d  ", tid, j, match[j]);
@@ -410,7 +412,7 @@ class MtMetis : public MapReduce<KeyType, ValueType>
             if(where[part].at(from) == INIT_VAL)
               where[part].at(from) = part; //bufferId; 
 
-            cgraph[it->first].push_back(e.src);
+            cgraph[it->first].push_back(e);
             //   fprintf(stderr,"\nTID: %d, element: %d k: %u, nedges: %u match: %u htable: %u ", tid,it->second[vit], k, nedges, match[it->second[vit]], htable[k]);
           }
           cnedges         += nedges;
