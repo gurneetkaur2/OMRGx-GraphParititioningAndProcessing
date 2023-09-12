@@ -66,6 +66,8 @@ std::vector<double> pr_times;
 static pthread_barrier_t barCompute;
 static pthread_barrier_t barWait;
 unsigned *ssIndex;
+pthread_mutex_t countTotalTime;
+static double countTotalIterTime = 0.0;
 
 template <typename KeyType, typename ValueType>
 class GraphChi : public MapReduce<KeyType, ValueType>
@@ -73,6 +75,9 @@ class GraphChi : public MapReduce<KeyType, ValueType>
   static thread_local std::ofstream ofile;
   static thread_local IdType edgeCounter;
   static thread_local unsigned iteration;
+  static thread_local uint64_t countVertexUpdatesPerThread;
+  static thread_local double iterationTime;
+  static thread_local bool donePr;
 
   public:
  // std::vector<IdType> *prOutput;
@@ -107,6 +112,7 @@ unsigned setPartitionId(const unsigned tid)
   void* map(const unsigned tid, const unsigned fileId, const std::string& input, const unsigned nbufferId, const unsigned hiDegree)
   {
   // fprintf(stderr,"\nTID: %d Inside Map", tid);
+    double time_mr = -getTimer();
     std::stringstream inputStream(input);
     unsigned to, token;
     std::vector<unsigned> from;
@@ -132,12 +138,15 @@ unsigned setPartitionId(const unsigned tid)
       this->writeBuf(tid, to, e, nbufferId, from.size());
     }
     ii[tid%this->getCols()].ubEdgeCount = edgeCounter;
+    time_mr += getTimer();
+    iterationTime += time_mr;
     return NULL;
   }
 
   void* beforeReduce(const unsigned tid) {
   //  assert(false);
    // fprintf(stderr,"\nTID: %d BEFORE reduce ", tid);
+      double time_br = -getTimer();
       Edge e;
       e.src = -1;
       e.dst = -1;
@@ -152,7 +161,9 @@ unsigned setPartitionId(const unsigned tid)
   //        ssIndex[tid][j] = 0;
         }
       edgeCounter = 0;
-   // fprintf(stderr,"\nTID: %d AFTER beforeReduce ", tid);
+    time_br += getTimer();
+    iterationTime += time_br;
+   efprintf(stderr,"\nTID: %d AFTER beforeReduce ", tid);
   }
 
   void* reduce(const unsigned tid, const InMemoryContainer<KeyType, ValueType>& container) {
@@ -237,10 +248,13 @@ unsigned setPartitionId(const unsigned tid)
     efprintf(stderr, "Num vertices: %zu, IC: %zu\n", vertices.size(), ii[shard].indexCount); //container.size());
     // then parallel-process shard -- calculate Pagerank
     gettimeofday(&s, NULL);
-                                                          
-    double time_pr = -getTimer();
-       efprintf(stderr, "TID: %d, PR Processing shard: %u \n", tid, memoryShard);
-    for(unsigned i= 0; i<vertices.size(); ) { 
+                     
+
+     double time_pr = -getTimer();
+     efprintf(stderr, "TID: %d, PR Processing shard: %u \n", tid, memoryShard);
+      donePr = false;
+    
+     for(unsigned i= 0; i<vertices.size(); ) { 
        IdType dst = vertices[i]->dst;
        long double sum = 0.0;
 
@@ -252,11 +266,27 @@ unsigned setPartitionId(const unsigned tid)
             }
             i++;
        }
-       double rank = (1-DAMPING_FACTOR) + (DAMPING_FACTOR*sum);
+
+       double rank = ((1-DAMPING_FACTOR) + (DAMPING_FACTOR*sum));
        //fprintf(stderr,"\nSHARD: %u, PR VERTICEs StartIndex : %u, ENDIndex: %u, Rank: %f ", memoryShard, dstStartIndex, i, rank);
-       unsigned dstEndIndex = i;
-       for(unsigned dstIndex = dstStartIndex; dstIndex<dstEndIndex; dstIndex++){
-          vertices[dstIndex]->vRank = rank;
+      
+      unsigned dstEndIndex = i;
+      
+      for(unsigned dstIndex = dstStartIndex; dstIndex<dstEndIndex; dstIndex++){
+          long double old = vertices[dstIndex]->vRank;
+     	// Count vertices per thread - vertex update happens only when previous rank is greater than new rank
+	  if(vertices[dstIndex]->vRank != rank)
+     	    countVertexUpdatesPerThread++;
+          
+	 vertices[dstIndex]->vRank = rank;
+         
+	// if (fabs(old - rank) >= 0.1 ){
+           //fprintf(stderr, "\ntid: %d old: %f, rank: %f ", tid, old, rank);
+	//   donePr = true;
+	//   }
+	  // if(fabs(old - rank) < 0.0001)
+	  //   donePr = true;
+	// else
         // if(!outputPrefix.empty())
          // prOutput[tid].at(dstIndex) = rank; // should not conflict with the other threads writing to it as vertices will be different
        }
@@ -268,6 +298,8 @@ unsigned setPartitionId(const unsigned tid)
        if(dst == readEdges[ss][ssIndex[ss]].src) {
          while(ssIndex[ss]<gcd[ss][memoryShard].length && dst == readEdges[ss][ssIndex[ss]].src) { // update ALL instances
           efprintf(stderr, "TID: %u - Updating shard: %u, %zu\n", tid, memoryShard, readEdges[ss][ssIndex[ss]].src);
+	  if(readEdges[ss][ssIndex[ss]++].rank != vertices[i]->vRank)
+     	    countVertexUpdatesPerThread++;
                readEdges[ss][ssIndex[ss]++].rank = vertices[i]->vRank;
          }
          break; // proceed to next sliding shard
@@ -276,6 +308,7 @@ unsigned setPartitionId(const unsigned tid)
   }
     time_pr += getTimer();
     pr_times[tid] += time_pr;
+    iterationTime += (time_ds + time_pr);
      gettimeofday(&e, NULL);
      efprintf(stderr, "!!!!!Parallel processing of subgraph for memory shard %u took: %.3lf\n", memoryShard, tmDiff(s, e));
      efprintf(stderr, "-------------------------%c\n", '-');
@@ -288,24 +321,31 @@ unsigned setPartitionId(const unsigned tid)
   }
 
   void* updateReduceIter(const unsigned tid) {
-    //fprintf(stderr,"\nTID: %d Updating reduce Iteration ", tid);
+    efprintf(stderr,"\nTID: %d Updating reduce Iteration, donePr: %d ", tid, donePr);
 
     edgeCounter = 0;
     ++iteration;
+    pthread_mutex_lock(&countTotalTime);
+      countTotalIterTime += iterationTime;
+      pthread_mutex_unlock(&countTotalTime);
+   // if (donePr){
     if(iteration >= this->getIterations()){
-       efprintf(stderr, "\nTID: %d, Iteration: %d Complete ", tid, iteration);
+       efprintf(stderr, "\nTID: %d, Iteration: %d Complete , vertices updated per thread: %d", tid, iteration, countVertexUpdatesPerThread);
+       efprintf(stderr, "\nTID: %d, iterationTime: %f, TotalIterTime: %f ", tid, iterationTime, countTotalIterTime);
        don = true;
-       return NULL;
+      return NULL;
     }
     this->notDone(tid);
      // assign next to prev for the next iteration , copy to prev of all threads
-     
-    efprintf(stderr,"\nTID: %d, iteration: %d ----", tid, iteration);
-   return NULL;
+    
+    efprintf(stderr,"\nTID: %d, iteration: %d , vertices updated per thread: %d ----", tid, iteration, countVertexUpdatesPerThread);
+       efprintf(stderr, "\nTID: %d, iterationTime: %f, TotalIterTime: %f ", tid, iterationTime, countTotalIterTime);
+     countVertexUpdatesPerThread = 0;
+    // iterationTime = 0;
+  return NULL;
   }
 
   void* afterReduce(const unsigned tid) {
-    //fprintf(stderr,"\nTID: %d After Reduce ", tid);
    // readEdges[tid].clear();
 //    if(!outputPrefix.empty()){
   //    std::string fileName = outputPrefix + std::to_string(tid);
@@ -325,6 +365,14 @@ unsigned setPartitionId(const unsigned tid)
   }*/
 };
 
+template <typename KeyType, typename ValueType>
+thread_local uint64_t GraphChi<KeyType, ValueType>::countVertexUpdatesPerThread = 0;
+
+template <typename KeyType, typename ValueType>
+thread_local double GraphChi<KeyType, ValueType>::iterationTime = 0;
+
+template <typename KeyType, typename ValueType>
+thread_local bool GraphChi<KeyType, ValueType>::donePr = 0;
 
 template <typename KeyType, typename ValueType>
 void* combine(const KeyType& key, std::vector<ValueType>& to, const std::vector<ValueType>& from) {

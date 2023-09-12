@@ -51,7 +51,7 @@ class Go : public MapReduce<KeyType, ValueType>
   static thread_local std::ofstream ofile;
 
   std::vector<pthread_mutex_t> locks;
-  unsigned long long *totalPECuts;
+  //unsigned long long *totalPECuts;
   std::map<unsigned, unsigned>* dTable;
   std::map<unsigned, unsigned >* bndIndMap; // TODO:move its declaration here to make it thread local
   // std::map<unsigned, unsigned > refineMap;  // to store the vertices from all partitions to be refined with each other 
@@ -150,12 +150,12 @@ class Go : public MapReduce<KeyType, ValueType>
     markMax = new std::vector<unsigned>[nReducers];
     markMin = new std::vector<unsigned>[nReducers];
     //  std::map<unsigned, unsigned> maxPair = new std::map<unsigned, unsigned>[this->nReducers];
-    totalPECuts = new unsigned long long[nReducers];
+    //totalPECuts = new unsigned long long[nReducers];
     // fetchPIds = new std::set<unsigned>[nReducers];
   }
   void* beforeReduce(const unsigned tid) {
       //  unsigned int iters = 0;
-     efprintf(stderr, "\nTID: %d,BEFORE Reducing values \n", tid);
+     fprintf(stderr, "\nTID: %d,BEFORE Reducing values \n", tid);
     if(tid ==0){
       //this->gCopy(tid, gWhere); //performance
     }
@@ -172,7 +172,7 @@ class Go : public MapReduce<KeyType, ValueType>
       pIdsCompleted[tid].push_back(false);
     }
     //fprintf(stderr,"\ntTID %d, RefineINit fetchPID size: %d ----", tid, fetchPIds[tid].size());
-    totalPECuts[tid] = 0;
+  //  totalPECuts[tid] = 0;
     //bndSet = false;
  //   totalCuts = 0; 
   }
@@ -220,7 +220,7 @@ class Go : public MapReduce<KeyType, ValueType>
     //}
     long double sum = 0.0;
    efprintf(stderr, "TID: %d, Running PR \n", tid);
-   double time_pr = -getTimer();
+    double time_pr = -getTimer();
     
    std::vector<Edge *> vertices;
    IdType v;
@@ -326,7 +326,7 @@ class Go : public MapReduce<KeyType, ValueType>
         IdType src = *it;
         if( where[src] != INIT_VAL && where[dst] != where[src] ) {
           //  fprintf(stderr,"\nTID: %d, where[%d]: %d != where[%d]: %d ", tid, src, where[src], dst, where[dst]);
-          totalPECuts[tid]++;
+         // totalPECuts[tid]++;
           costE++;
           bndind[src]++; // = costE ;     
         }
@@ -450,7 +450,7 @@ class Go : public MapReduce<KeyType, ValueType>
       markMin->clear();
       fetchPIds->clear();
       pIdsCompleted->clear();
-      delete[] totalPECuts;
+     // delete[] totalPECuts;
       delete[] bndIndMap;
       delete[] dTable;
       delete[] markMax;
@@ -577,7 +577,7 @@ pthread_barrier_init(&barAfterRefine, NULL, nReducers);
 go.writeInit(nReducers, nvertices);
 go.init(folderpath, gb, nmappers, nReducers, nvertices, hiDegree, batchSize, kitems, npartitions);
 go.initRefineStructs();
-
+std::cout<<"\nCalling RUN" ;
 double runTime = -getTimer();
 go.run(); 
 runTime += getTimer();

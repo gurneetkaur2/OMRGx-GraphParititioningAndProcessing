@@ -171,6 +171,7 @@ class MtMetis : public MapReduce<KeyType, ValueType>
 //------------------------------------------------
 
   void* beforeReduce(const unsigned tid) {
+      efprintf(stderr, "\nTID:%d Starting Reduce\n", tid);
     unsigned size = this->getContainerSize();
     perm = (IdType *) calloc(size, sizeof(IdType));
     }
@@ -246,7 +247,7 @@ class MtMetis : public MapReduce<KeyType, ValueType>
       } while(level > 0);
 
       gettimeofday(&e, NULL);
-      fprintf(stderr, "\nRefining Partition for part %u took: %.3lf \n", part, tmDiff(s, e));
+      efprintf(stderr, "\nRefining Partition for part %u took: %.3lf \n", part, tmDiff(s, e));
         //assert(false);
         // store the coarsened graph on disk
 

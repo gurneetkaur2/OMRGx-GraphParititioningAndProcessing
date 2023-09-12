@@ -101,6 +101,7 @@ unsigned lineId = tid*mr->linesPerThread + tid ;//0, 4, 8
   if(writer.getWrittenToDisk()) {
     mr->writer.flushMapResidues(tid);
   }
+  fprintf(stderr, "thread %u done flushing\n", tid);
 
   mr->afterMap(tid);
 
@@ -341,6 +342,7 @@ end_read.resize(nMappers, 0);
   fprintf(stderr, "Running Mappers\n");
   parallelExecute(doMap<KeyType, ValueType>, this, nMappers);
 
+  fprintf(stderr, "DONE *** Running Mappers\n");
    //assert(false);
   if(!writer.getWrittenToDisk()) {
     fprintf(stderr, "Running InMemoryReducers\n");
