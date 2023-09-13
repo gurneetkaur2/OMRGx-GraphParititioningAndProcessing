@@ -1,0 +1,76 @@
+#!/bin/bash -l
+
+#SBATCH --nodes=1  --exclusive      ## 
+#SBATCH --ntasks=1      ## for distributed or MPI more than 1
+#SBATCH --cpus-per-task=32   ## for multithreading in shared memory
+#SBATCH --ntasks-per-core=1
+## ##SBATCH --num_threads=8
+#SBATCH --mem=425G
+#SBATCH --time=0-02:00:00     # 1 day and 15 minutes 1-00:15:00
+#SBATCH --mail-user=gkaur007@ucr.edu
+#SBATCH --mail-type=ALL
+#SBATCH --job-name="S_GOk"
+#SBATCH -p short # This is the default partition, you can use any of the following; intel, batch, highmem, gpu
+
+# Print current date
+date
+
+# Load samtools
+module load samtools
+
+# Concatenate BAMs
+samtools cat -h header.sam -o out.bam in1.bam in2.bam
+
+# Print name of node
+hostname
+
+ulimit -S -n 1000000
+
+npart=( 2); ## 8 16 24 32 2 );
+output=./outputs/;
+partsD=parts_${npart};
+testd=~/bigdata/gkaur007/datasets/inputs/${partsD}/;
+vertices=3072626;
+input=~/bigdata/gkaur007/datasets/inputs/ok;  ##adj_pokec.graph;
+outpre=testGO;
+outf=intTO32;
+bsize=( 3072626 ); ## 3072626 2304470 1536313 768158 ); ##2304470 1536313 768158 );   ##1536313;   ##3072626 
+hideg=10000;
+mappers=32;
+gb=1;
+k=20;
+iters=1;
+flag1=-DUSE_GOMR;
+flag2=-DUSE_GRAPHCHI;
+mrdata=/rhome/gkaur007/bigdata/gkaur007/;
+
+##sleep 10s;
+for batchsize in ${bsize[@]};
+do
+	for nparts in ${npart[@]} ;
+	do
+		echo -e "                               " >> ${output}${outf} ; 
+		echo -e "\n*************************\n\n" >> ${output}${outf} ; 
+		echo " /usr/bin/time -f "%P %M" ./go.bin ${input} ${gb} ${mappers} ${nparts} ${batchsize} ${k} ${vertices} ${iters} ${hideg} ${testd}${outpre}${batchsize}${nparts} ${flag1} ${flag2} " >> ${output}${outf};
+		echo "\n---------------------------\n\n ">> ${output}${outf};
+	##	SECONDS=0;
+		ulimit -n 32768;
+		##module load centos
+		##centos.sh "module load extra GCCcore/6.3.0; which gcc;"
+		../go.bin ${input} ${gb} ${mappers} ${nparts} ${batchsize} ${k} ${vertices} ${iters} ${hideg} ${testd}${outpre}${batchsize}${nparts} ${flag1} ${flag2} >> ${output}${outf} 2>&1; 
+	##	echo "$(($duration / 60)) minutes and $(($duration % 60)) seconds elapsed." >> ${output}${outf} 2>&1;
+		echo "--------------------------- ">> ${output}${outf};
+		echo "Meta Data size " >> ${output}${outf};
+                op=`du -s ${mrdata}/mrdata/data/`; 
+                siz=`echo ${op} | cut -d' ' -f1`;
+                echo "MRDATA ACTUAL DATA SIZE: ${siz} KB" >> ${output}${outf};
+                op=`du -s ${mrdata}/mrdata/meta/`;
+                siz=`echo ${op} | cut -d' ' -f1`;
+                echo "MRDATA ACTUAL META SIZE: ${siz} KB" >> ${output}${outf};
+		           
+		rm -rf ${mrdata}/mrdata/data;
+                rm -rf ${mrdata}/mrdata/meta;
+                rm -rf ${mrdata}/combdata/*;
+		echo -e "\n*************************\n\n" >> ${output}${outf} ; 
+	done;
+done;
