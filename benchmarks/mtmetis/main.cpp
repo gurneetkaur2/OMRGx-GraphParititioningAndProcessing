@@ -1,6 +1,7 @@
 //RUN - ./mtmetis.bin ~/work/datasets/inputs/mdual 1 4 2 14000 20 258570 1 10000 2 test -DUSE_GOMR 
 #include "data.pb.h"
 
+
 #define USE_NUMERICAL_HASH
 
 #include "../../engine/mapreduce.hpp"

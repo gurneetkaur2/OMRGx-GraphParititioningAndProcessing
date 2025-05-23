@@ -1,3 +1,4 @@
+
 #ifndef __MAPWRITER_H__
 #define __MAPWRITER_H__
 #include "infinimem/fileIO.h"

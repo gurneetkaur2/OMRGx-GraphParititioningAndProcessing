@@ -6,6 +6,7 @@
 #SBATCH -N 1
 #SBATCH --exclusive
 
+
 module load centos
 #centos.sh 'make clean && make'
 centos.sh ./runok.sh

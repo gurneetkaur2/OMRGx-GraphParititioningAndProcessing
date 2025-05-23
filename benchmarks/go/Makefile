@@ -4,7 +4,7 @@ CPP         := g++
 CC          := gcc
 CFLAGS      := -w -MMD -std=c++11 
 #CFLAGS      := -Wall -MMD
-LIBS        := -lm -lpthread -ltcmalloc -lstdc++ #-Wl,-rpath=/home/gkaur007/opt
+LIBS        := -lm -lpthread -ltcmalloc -lstdc++ 
 LIBPATH     := ../../engine
 LDLIBS      := #-L/home/gkaur007/opt/ -L/home/gkaur007/opt/lib/ -Wl,-R/home/gkaur007/opt/lib/
 

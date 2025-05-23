@@ -87,7 +87,6 @@ void MapWriter<KeyType, ValueType>::initBuf(unsigned nMappers, unsigned nReducer
   template <typename KeyType, typename ValueType>
 void MapWriter<KeyType, ValueType>::releaseMapStructures()
 {
-fprintf(stderr,"Releasing MapStructs ***");
   for (unsigned i = 0; i < nCols; i++)
     pthread_mutex_destroy(&locks[i]);
 
@@ -99,7 +98,6 @@ fprintf(stderr,"Releasing MapStructs ***");
   delete[] nItems;
   //delete[] nValues;
   delete[] outBufMap;
-fprintf(stderr,"DONE Releasing MapStructs ***");
 }
 //-------------------------------------------------
   template <typename KeyType, typename ValueType>

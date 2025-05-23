@@ -1,8 +1,4 @@
-//#ifdef USE_ONE_PHASE_IO
-//#include "recordtype.h"
-//#else
 #include "data.pb.h"
-//#endif
 
 #define USE_NUMERICAL_HASH
 

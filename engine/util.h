@@ -10,6 +10,7 @@
 #include <vector>
 #include <fstream>
 
+
 #include <google/protobuf/stubs/common.h>
 typedef ::google::protobuf::uint64 IdType;
 

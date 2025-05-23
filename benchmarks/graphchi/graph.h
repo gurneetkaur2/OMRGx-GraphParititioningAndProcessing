@@ -2,7 +2,6 @@
 #define __GRAPH_H_
 
 #include <climits>
-//#include "../../engine/mapreduce.hpp"
 
 #define MAX_VERTEX_VALUE (ULLONG_MAX)
 

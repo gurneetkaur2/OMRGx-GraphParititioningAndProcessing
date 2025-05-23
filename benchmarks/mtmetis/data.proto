@@ -1,5 +1,6 @@
 syntax = "proto2";
 
+
 message EdgeType{
   required uint64 src = 1;
   required uint64 dst = 3;

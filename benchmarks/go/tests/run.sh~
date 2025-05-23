@@ -8,4 +8,4 @@
 
 module load centos
 #centos.sh 'make clean && make'
-centos.sh ./runbt2.sh
+centos.sh ./runok.sh

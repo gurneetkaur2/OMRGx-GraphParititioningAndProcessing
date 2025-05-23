@@ -1,3 +1,4 @@
+
 #include "mapwriter.h"
 #ifdef USE_GRAPHCHI
 #include "../benchmarks/graphchi/graph.h"

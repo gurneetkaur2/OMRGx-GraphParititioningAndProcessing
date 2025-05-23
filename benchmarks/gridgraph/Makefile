@@ -1,5 +1,4 @@
 TARGET      := gridgraph.bin
-#TARGET_ONE  := graphchi-one.bin
 CPP         := g++
 CC          := gcc
 CFLAGS      := -g -O0 -w -MMD -std=c++11 

@@ -1,5 +1,4 @@
 TARGET      := mtmetis.bin
-#TARGET_ONE  := wordcount-one.bin
 CPP         := g++
 CC          := gcc
 CFLAGS      := -w -MMD -std=c++11 

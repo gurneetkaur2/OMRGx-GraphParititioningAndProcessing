@@ -1,8 +1,5 @@
 //RUN: ./graphchi.bin ~/work/datasets/inputs/mdual 1 2 2 2000 100 258570 2 10000 test -DUSE_GOMR -DUSE_GRAPHCHI
 #include "data.pb.h"
-//#include "edgelist.pb.h"
-//#include "adjacencyList.pb.h"
-//#include "graph.h"
 
 #define USE_NUMERICAL_HASH
 
